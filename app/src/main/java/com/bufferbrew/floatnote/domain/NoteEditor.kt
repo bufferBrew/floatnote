@@ -4,6 +4,7 @@ import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.BlockType
 import com.bufferbrew.floatnote.domain.model.Note
 import com.bufferbrew.floatnote.domain.model.TaskCompletionMode
+import com.bufferbrew.floatnote.domain.model.type
 import java.util.UUID
 
 /**
@@ -55,6 +56,19 @@ class NoteEditor(private val newId: () -> String = { UUID.randomUUID().toString(
         val blocks = note.blocks.toMutableList().apply { add(position, block) }
         return note.copy(blocks = blocks) to block.id
     }
+
+    /**
+     * Pressing Enter inside a list item: [blockId] keeps [before], and a new open item of the same
+     * type holding [after] goes right below it. Returns the new note and the new block's id.
+     */
+    fun split(note: Note, blockId: String, before: String, after: String): Pair<Note, String> {
+        val index = note.indexOf(blockId) ?: return note to blockId
+        val type = note.blocks[index].type
+        val (inserted, newId) = insertAfter(updateText(note, blockId, before), blockId, type)
+        return updateText(inserted, newId, after) to newId
+    }
+
+    fun setTitle(note: Note, title: String): Note = note.copy(title = title)
 
     fun remove(note: Note, blockId: String): Note =
         note.copy(blocks = note.blocks.filterNot { it.id == blockId })

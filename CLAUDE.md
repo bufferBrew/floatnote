@@ -45,9 +45,23 @@ Solo developer, main-branch workflow.
 
 Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change done.
 
+## Code map
+- `domain/model/Note.kt`: `Note`, `Block` (Text / Checklist / Task), `TaskCompletionMode`.
+- `domain/NoteEditor.kt`: every edit, as pure functions. Unit-tested.
+- `data/db/`: Room `notes` + `blocks` tables (blocks cascade-delete). A save rewrites all of
+  a note's blocks in one transaction. Schema JSON is exported to `app/schemas/`; commit it.
+- `data/NoteMapper.kt`, `data/NoteRepository.kt`: entity ↔ domain, `RoomNoteRepository`.
+- `FloatNoteApp`: manual DI root (`repository`, `persistScope`).
+- `ui/editor/NoteViewModel.kt`: holds the open note as Compose snapshot state (not a Flow, so
+  text fields don't lose the cursor), with a debounced save plus `flush()` on stop/clear.
+- `ui/editor/NoteEditorContent.kt`: the stateless editor, driven through `NoteEditorActions`.
+
 ## Architecture guardrails
-- Note editor UI is **one composable used by both the Activity and the overlay**.
-  Never fork editor logic for floating mode; that's how parity breaks.
+- Note editor UI is **one composable used by both the Activity and the overlay**:
+  `NoteEditorContent` + `NoteViewModel`. Never fork editor logic for floating mode; that's
+  how parity breaks.
+- A schema change means bumping the Room `version` and adding a migration. Never use
+  destructive fallback: these are the user's notes.
 - Block ordering rules (task "move to bottom" vs "keep in place") live in pure Kotlin
   domain code with unit tests, not in composables.
 - Overlay window: drop `FLAG_NOT_FOCUSABLE` while a text field is focused so the

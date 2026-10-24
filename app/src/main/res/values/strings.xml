@@ -1,3 +1,12 @@
 <resources>
     <string name="app_name">FloatNote</string>
+    <string name="title_hint">Title</string>
+    <string name="empty_note_hint">Tap here or pick a block type below to start writing</string>
+    <string name="block_hint">Write something</string>
+    <string name="remove_block">Remove line</string>
+    <string name="block_text">Text</string>
+    <string name="block_checklist">Checklist</string>
+    <string name="block_task">Task</string>
+    <string name="mode_move_to_bottom">Done tasks: move down</string>
+    <string name="mode_keep_in_place">Done tasks: stay put</string>
 </resources>
