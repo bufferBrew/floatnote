@@ -45,7 +45,11 @@ class VoiceController(
     private val liveRecognizer: LiveRecognizer,
     private val engine: () -> VoiceEngine,
     private val config: () -> WhisperConfig?,
+    /** Why [config] is null, for the error shown; null falls back to "add your key". */
+    private val configProblem: () -> String? = { null },
     private val language: () -> String,
+    /** Vocabulary words for the device recognizer to listen for. */
+    private val hints: () -> List<String> = { emptyList() },
     private val audioDir: File,
     private val scope: CoroutineScope,
     private val onTranscript: (noteId: String, text: String) -> Unit,
@@ -55,6 +59,11 @@ class VoiceController(
     private val maxDurationMs: Long = 10 * 60 * 1000,
     /** How long stop waits for the device recognizer's last sentence before giving up. */
     private val finishTimeoutMs: Long = 3_000,
+    /**
+     * Recording stops by itself after this long without speech, so a note left open with
+     * auto-record on doesn't record (and upload, and drain the battery) for 10 minutes.
+     */
+    private val silenceTimeoutMs: Long = 45_000,
 ) {
     var state by mutableStateOf<VoiceState>(VoiceState.Idle)
         private set
@@ -65,6 +74,10 @@ class VoiceController(
     private var recordingFile: File? = null
     private var recordingNote: String? = null
     private var startedAt = 0L
+
+    /** Last time the level was above [quietBelow]; and whether that has happened at all. */
+    private var lastSoundAt = 0L
+    private var heardSound = false
 
     /** Audio kept after a failed upload, and the note it belongs to. */
     private var pending: Pair<File, String>? = null
@@ -86,7 +99,7 @@ class VoiceController(
         }
         if (config() == null) {
             state = VoiceState.Error(
-                "Add your Whisper API key in Settings, or switch to device speech recognition.",
+                configProblem() ?: "Add your Whisper API key in Settings, or switch to device speech recognition.",
                 needsSettings = true,
             )
             return
@@ -104,22 +117,38 @@ class VoiceController(
         recordingNote = noteId
         startedAt = clock()
         state = VoiceState.Recording(emptyList(), 0)
-        startSampler { recorder.level() }
+        startSampler(RECORDER_QUIET) { recorder.level() }
     }
 
-    /** Ticks the timer and waveform; [level] reads the current loudness. */
-    private fun startSampler(level: () -> Float) {
+    /**
+     * Ticks the timer and waveform; [level] reads the current loudness. Levels under [quietBelow]
+     * count as silence (the two engines report on different scales).
+     */
+    private fun startSampler(quietBelow: Float, level: () -> Float) {
+        lastSoundAt = clock()
+        heardSound = false
         sampler = scope.launch {
             while (true) {
                 delay(sampleIntervalMs)
                 val current = state as? VoiceState.Recording ?: break
-                val elapsed = clock() - startedAt
+                val now = clock()
+                val sample = level()
+                if (sample >= quietBelow) {
+                    lastSoundAt = now
+                    heardSound = true
+                }
+                val elapsed = now - startedAt
                 state = current.copy(
-                    levels = (current.levels + level()).takeLast(MAX_LEVELS),
+                    levels = (current.levels + sample).takeLast(MAX_LEVELS),
                     elapsedMs = elapsed,
                 )
                 if (elapsed >= maxDurationMs) {
                     stop()
+                    break
+                }
+                if (now - lastSoundAt >= silenceTimeoutMs) {
+                    // Nothing was said at all: don't upload a silent clip, just stop.
+                    if (!heardSound && liveNote == null) cancel() else stop()
                     break
                 }
             }
@@ -133,7 +162,7 @@ class VoiceController(
         startedAt = clock()
         state = VoiceState.Recording(emptyList(), 0)
         try {
-            liveRecognizer.start(language(), liveListener)
+            liveRecognizer.start(language(), hints(), liveListener)
         } catch (e: IllegalStateException) {
             liveNote = null
             state = VoiceState.Error(
@@ -142,7 +171,7 @@ class VoiceController(
             )
             return
         }
-        startSampler { liveLevel }
+        startSampler(LIVE_QUIET) { liveLevel }
     }
 
     private val liveListener = object : LiveRecognizer.Listener {
@@ -151,6 +180,9 @@ class VoiceController(
         }
 
         override fun onPartial(text: String) {
+            // Words arriving is speech, whatever the level says.
+            lastSoundAt = clock()
+            heardSound = true
             (state as? VoiceState.Recording)?.let { state = it.copy(partial = text) }
         }
 
@@ -260,7 +292,7 @@ class VoiceController(
         if (cfg == null) {
             pending = file to noteId
             state = VoiceState.Error(
-                "Add your Whisper API key in Settings, then retry.",
+                (configProblem() ?: "Add your Whisper API key in Settings.") + " Then retry.",
                 canRetry = true,
                 needsSettings = true,
             )
@@ -292,5 +324,11 @@ class VoiceController(
     companion object {
         /** Samples kept for the waveform; ~2.4 s at the default rate. */
         const val MAX_LEVELS = 24
+
+        /** MediaRecorder amplitude (0–1): a quiet room sits around 0.01, speech 0.1 and up. */
+        private const val RECORDER_QUIET = 0.05f
+
+        /** Device recognizer level from its RMS dB: silence reads up to ~0.2. */
+        private const val LIVE_QUIET = 0.3f
     }
 }

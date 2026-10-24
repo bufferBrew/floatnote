@@ -14,4 +14,9 @@ interface NoteEditorActions {
     fun onTaskModeChange(mode: TaskCompletionMode)
     fun onFocusChanged(blockId: String, focused: Boolean)
     fun onFocusConsumed()
+
+    /** AI: restructure the open note. */
+    fun onOrganise()
+    fun onUndoOrganise()
+    fun onDismissAssist()
 }

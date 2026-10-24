@@ -44,3 +44,26 @@ data class NoteSummaryRow(
     val updatedAt: Long,
     val preview: String,
 )
+
+/**
+ * One dictation as it went into a note, for the History screen. Not tied to the note by a
+ * foreign key: history outlives deleted notes, like Wispr Flow's.
+ */
+@Entity(tableName = "dictations", indices = [Index("createdAt")])
+data class DictationEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val noteId: String,
+    /** What was added to the note (after vocabulary and AI clean-up). */
+    val text: String,
+    /** What the recognizer heard, when it differs from [text]. */
+    val raw: String?,
+    val createdAt: Long,
+)
+
+/** A vocabulary word. With a [replacement], heard [term] is rewritten to it. */
+@Entity(tableName = "vocabulary")
+data class VocabEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val term: String,
+    val replacement: String,
+)

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+. The API key is encrypted with an Android Keystore key, which never leaves this
+    phone, so a restored copy of voice_secret.xml could never be decrypted: leave it out of backups.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="voice_secret.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="voice_secret.xml" />
+    </device-transfer>
+</data-extraction-rules>

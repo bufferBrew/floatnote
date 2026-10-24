@@ -70,8 +70,9 @@ class NoteEditor(private val newId: () -> String = { UUID.randomUUID().toString(
 
     fun setTitle(note: Note, title: String): Note = note.copy(title = title)
 
-    /** A fresh note starting with one empty text line, ready to type into. */
-    fun newNote(): Note = Note(id = newId(), blocks = listOf(Block.Text(newId(), "")))
+    /** A fresh note with one text line ([text], or empty to type into). Used for shared text too. */
+    fun newNote(title: String = "", text: String = ""): Note =
+        Note(id = newId(), title = title.trim(), blocks = listOf(Block.Text(newId(), text.trim())))
 
     /** Removing the line between two task lists merges them, so groups are re-sorted. */
     fun remove(note: Note, blockId: String): Note =

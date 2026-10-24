@@ -30,8 +30,11 @@ interface LiveRecognizer {
         fun onError(message: String)
     }
 
-    /** Throws [IllegalStateException] if this phone has no speech recognizer. */
-    fun start(language: String, listener: Listener)
+    /**
+     * [hints] are vocabulary words to bias towards (Android 13+ recognizers that support it).
+     * Throws [IllegalStateException] if this phone has no speech recognizer.
+     */
+    fun start(language: String, hints: List<String>, listener: Listener)
 
     /** Finish: the last sentence is delivered, then [Listener.onEnd]. */
     fun stop()
@@ -94,6 +97,7 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
     }
     private var listener: LiveRecognizer.Listener? = null
     private var language = ""
+    private var hints = ArrayList<String>()
     private var active = false
     private var stopping = false
     private var usingOnDevice = false
@@ -104,9 +108,10 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
     /** Sessions in a row that heard speech but produced no text. */
     private var emptyAfterSpeech = 0
 
-    override fun start(language: String, listener: LiveRecognizer.Listener) {
+    override fun start(language: String, hints: List<String>, listener: LiveRecognizer.Listener) {
         cancel()
         this.language = language
+        this.hints = ArrayList(hints)
         this.listener = listener
         active = true
         stopping = false
@@ -195,6 +200,11 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
                 .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
                 .apply { if (language.isNotBlank()) putExtra(RecognizerIntent.EXTRA_LANGUAGE, language) }
+                .apply {
+                    if (hints.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        putStringArrayListExtra(RecognizerIntent.EXTRA_BIASING_STRINGS, hints)
+                    }
+                }
         )
     }
 

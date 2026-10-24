@@ -2,9 +2,12 @@ package com.bufferbrew.floatnote.overlay
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Build
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.widget.FrameLayout
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 
 /**
  * Root of the overlay window. Sees every touch and key before Compose does, so the window can
@@ -12,7 +15,9 @@ import android.widget.FrameLayout
  * - a touch outside the window (needs FLAG_WATCH_OUTSIDE_TOUCH) gives focus back to that app,
  *   so you can keep typing there;
  * - a touch inside takes focus again, so the note's text fields can raise the keyboard;
- * - Back minimises instead of being swallowed.
+ * - Back minimises instead of being swallowed. On Android 13+ that's an [OnBackInvokedCallback]:
+ *   with targetSdk 36+ (predictive back) the system no longer sends KEYCODE_BACK to windows.
+ *   Back only reaches the focused window, so it never fires for the (unfocusable) bubble.
  */
 @SuppressLint("ViewConstructor")
 class OverlayRootView(
@@ -31,6 +36,26 @@ class OverlayRootView(
             MotionEvent.ACTION_DOWN -> onInsideTouch()
         }
         return super.dispatchTouchEvent(event)
+    }
+
+    private val backCallback: Any? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) OnBackInvokedCallback { onBack() } else null
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            findOnBackInvokedDispatcher()?.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                backCallback as OnBackInvokedCallback,
+            )
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            findOnBackInvokedDispatcher()?.unregisterOnBackInvokedCallback(backCallback as OnBackInvokedCallback)
+        }
+        super.onDetachedFromWindow()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

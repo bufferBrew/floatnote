@@ -1,5 +1,6 @@
 package com.bufferbrew.floatnote.ui.editor
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -11,20 +12,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -62,13 +68,34 @@ fun NoteEditorContent(
     voiceActions: VoiceActions,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    assist: AssistState = AssistState.Idle,
+    onShare: (() -> Unit)? = null,
 ) {
     // Read voice state only where it's drawn: it changes ~12×/s while listening, and reading it
     // here would redraw the whole editor that often.
     val recording by remember { derivedStateOf { voiceState() is VoiceState.Recording } }
     val typography = MaterialTheme.typography
+    val listState = rememberLazyListState()
+    val currentNote by rememberUpdatedState(note)
+    // A new line about to take focus may be below the fold: bring it into view so it can.
+    LaunchedEffect(pendingFocus) {
+        val index = currentNote.blocks.indexOfFirst { it.id == pendingFocus }
+        if (index >= 0) listState.animateScrollToItem(index + 1) // +1: the title is item 0
+    }
+    // Dictation lands at the end. Follow it if you were already looking at the end, as a
+    // chat does; don't yank the view away from a line you're reading or editing higher up.
+    val lastId = note.blocks.lastOrNull()?.id
+    var seenLastId by remember { mutableStateOf(lastId) }
+    LaunchedEffect(lastId) {
+        if (lastId == seenLastId) return@LaunchedEffect
+        seenLastId = lastId
+        val info = listState.layoutInfo
+        val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+        if (lastVisible >= info.totalItemsCount - 3) listState.animateScrollToItem(currentNote.blocks.size)
+    }
     Column(modifier) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
         ) {
@@ -104,12 +131,15 @@ fun NoteEditorContent(
                 )
             }
         }
+        AssistStatus(assist, actions, voiceActions::onOpenSettings, Modifier.padding(top = Dimens.SpaceS))
         VoiceStatus(voiceState, voiceActions, Modifier.padding(top = Dimens.SpaceS))
         EditorToolbar(
             taskMode = note.taskMode,
             actions = actions,
             recording = recording,
+            organising = assist == AssistState.Working,
             onMic = voiceActions::onMicToggle,
+            onShare = onShare,
             dense = compact,
         )
     }
@@ -142,11 +172,20 @@ private fun BlockRow(
             else baseStyle
     }
 
+    // TalkBack reads the checkbox with its item ("Task, buy milk"), not just "checkbox".
+    val checkLabel = when (block) {
+        is Block.Text -> ""
+        is Block.Checklist -> stringResource(R.string.checklist_item)
+        is Block.Task -> stringResource(R.string.task_item)
+    }.let { kind -> if (block.text.isBlank()) kind else stringResource(R.string.checkbox_label, kind, block.text) }
+    val checkModifier = Modifier.semantics { contentDescription = checkLabel }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         when (block) {
             is Block.Text -> Unit
-            is Block.Checklist -> Checkbox(block.checked, onCheckedChange = { actions.onToggle(block.id) })
-            is Block.Task -> Checkbox(block.done, onCheckedChange = { actions.onToggle(block.id) })
+            is Block.Checklist ->
+                Checkbox(block.checked, onCheckedChange = { actions.onToggle(block.id) }, modifier = checkModifier)
+            is Block.Task ->
+                Checkbox(block.done, onCheckedChange = { actions.onToggle(block.id) }, modifier = checkModifier)
         }
         EditorTextField(
             value = block.text,
@@ -203,7 +242,9 @@ private fun EditorToolbar(
     taskMode: TaskCompletionMode,
     actions: NoteEditorActions,
     recording: Boolean,
+    organising: Boolean,
     onMic: () -> Unit,
+    onShare: (() -> Unit)?,
     dense: Boolean,
 ) {
     // Scrolls sideways so it fits a narrow floating window.
@@ -219,6 +260,11 @@ private fun EditorToolbar(
             text = stringResource(if (recording) R.string.voice_stop else R.string.voice_record),
             onClick = onMic,
             selected = recording,
+            dense = dense,
+        )
+        PillButton(
+            text = stringResource(if (organising) R.string.ai_organising else R.string.ai_organise),
+            onClick = actions::onOrganise,
             dense = dense,
         )
         PillButton(stringResource(R.string.block_text), { actions.onChangeType(BlockType.Text) }, dense = dense)
@@ -238,5 +284,51 @@ private fun EditorToolbar(
             selected = taskMode == TaskCompletionMode.MoveToBottom,
             dense = dense,
         )
+        if (onShare != null) PillButton(stringResource(R.string.share_note), onShare, dense = dense)
+    }
+}
+
+/** The Organise step's progress, result (with Undo) or error. Nothing when idle. */
+@Composable
+private fun AssistStatus(
+    assist: AssistState,
+    actions: NoteEditorActions,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (assist == AssistState.Idle) return
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Dimens.CornerM))
+            .background(colors.surfaceVariant)
+            .padding(start = Dimens.SpaceM, end = Dimens.SpaceXs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val message = when (assist) {
+            AssistState.Working -> stringResource(R.string.ai_organising)
+            AssistState.Done -> stringResource(R.string.ai_organised)
+            is AssistState.Error -> assist.message
+            AssistState.Idle -> ""
+        }
+        Text(
+            message,
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.weight(1f).padding(vertical = Dimens.SpaceS),
+        )
+        if (assist is AssistState.Error && assist.needsSettings) {
+            TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.settings)) }
+        }
+        when (assist) {
+            AssistState.Working ->
+                TextButton(onClick = actions::onDismissAssist) { Text(stringResource(R.string.cancel)) }
+            AssistState.Done -> {
+                TextButton(onClick = actions::onUndoOrganise) { Text(stringResource(R.string.ai_undo)) }
+                TextButton(onClick = actions::onDismissAssist) { Text(stringResource(R.string.ai_keep)) }
+            }
+            else -> TextButton(onClick = actions::onDismissAssist) { Text(stringResource(R.string.voice_dismiss)) }
+        }
     }
 }

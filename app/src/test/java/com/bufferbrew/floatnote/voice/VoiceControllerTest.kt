@@ -50,7 +50,7 @@ class VoiceControllerTest {
         var cancelled = false
         /** When false, stop() never answers, to exercise the timeout. */
         var answersStop = true
-        override fun start(language: String, listener: LiveRecognizer.Listener) {
+        override fun start(language: String, hints: List<String>, listener: LiveRecognizer.Listener) {
             if (unavailable) throw IllegalStateException("none")
             this.listener = listener
         }
@@ -88,6 +88,66 @@ class VoiceControllerTest {
         maxDurationMs = 10_000,
         finishTimeoutMs = 3_000,
     )
+
+    private fun silenceVoice() = VoiceController(
+        recorder = recorder,
+        transcriber = transcriber,
+        liveRecognizer = live,
+        engine = { engine },
+        config = { config },
+        language = { "" },
+        audioDir = dir,
+        scope = scope,
+        onTranscript = { id, text -> transcripts += id to text },
+        clock = { scope.testScheduler.currentTime },
+        sampleIntervalMs = 100,
+        maxDurationMs = 60_000,
+        silenceTimeoutMs = 5_000,
+    )
+
+    @Test
+    fun `silence after speech stops and sends the clip`() {
+        val voice = silenceVoice()
+        voice.start("n")
+        scope.advanceTimeBy(1_000) // speaking
+        recorder.level = 0.01f
+        scope.advanceTimeBy(5_200)
+        scope.runCurrent()
+        assertFalse(voice.isRecording)
+        assertEquals(listOf("n" to "hello world"), transcripts)
+    }
+
+    @Test
+    fun `a clip with no speech at all is dropped, not uploaded`() {
+        recorder.level = 0.01f
+        val voice = silenceVoice()
+        voice.start("n")
+        scope.advanceTimeBy(5_200)
+        assertEquals(VoiceState.Idle, voice.state)
+        assertTrue(transcriber.sent.isEmpty())
+    }
+
+    @Test
+    fun `talking keeps the recording going`() {
+        val voice = silenceVoice()
+        voice.start("n")
+        scope.advanceTimeBy(20_000)
+        assertTrue(voice.isRecording)
+    }
+
+    @Test
+    fun `device engine stops after silence, words count as speech`() {
+        engine = VoiceEngine.Device
+        val voice = silenceVoice()
+        voice.start("n")
+        live.listener!!.onLevel(0.05f)
+        scope.advanceTimeBy(4_000)
+        live.listener!!.onPartial("still talking")
+        scope.advanceTimeBy(4_000)
+        assertTrue(voice.isRecording)
+        scope.advanceTimeBy(1_200)
+        assertTrue(live.stopped)
+    }
 
     @After
     fun tearDown() {

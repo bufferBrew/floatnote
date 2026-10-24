@@ -3,38 +3,85 @@ package com.bufferbrew.floatnote
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+import com.bufferbrew.floatnote.overlay.OverlayPrefs
 import com.bufferbrew.floatnote.overlay.openFloatingNote
 import com.bufferbrew.floatnote.voice.hasMicPermission
 
 /**
  * The "Float note" launcher entry, the one to add to the Samsung Edge panel (or any launcher).
+ * The Quick Settings tile, the app shortcuts and "Share to FloatNote" come through here too.
  * It has no UI: it opens the floating window over whatever you were doing and finishes at once.
  * Being a visible Activity for that instant is what lets it start the foreground service,
  * including its microphone type.
  *
- * It also asks for the microphone on the overlay's behalf, since a Service can't show the
- * permission prompt. The window is opened after the answer, so the service starts with the
- * mic type when it's allowed.
+ * It also asks for the microphone, and once for notifications (the floating note's Show/Close
+ * notification), on the overlay's behalf, since a Service can't show permission prompts. The
+ * window is opened after the answers, so the service starts with the mic type when it's allowed.
  */
 class FloatLaunchActivity : ComponentActivity() {
 
+    private val app get() = application as FloatNoteApp
+
     private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) Toast.makeText(this, R.string.mic_permission_needed, Toast.LENGTH_LONG).show()
+        askNotificationsThenOpen()
+    }
+
+    private val requestNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         openAndFinish()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState != null) return // re-created mid prompt; the result callback finishes
+
+        if (intent.action == Intent.ACTION_SEND) {
+            openShared()
+            return
+        }
+        // Static shortcut extras may arrive as a boolean or as the string "true".
+        val newNote = intent.getBooleanExtra(EXTRA_NEW_NOTE, false) || intent.getStringExtra(EXTRA_NEW_NOTE) == "true"
+        if (newNote || OverlayPrefs(this).openNewNote) {
+            app.session.createNote()
+        }
         // The mic button always asks; auto-record asks only the first time.
         val explicit = intent.getBooleanExtra(EXTRA_REQUEST_MIC, false)
         val ask = !hasMicPermission() &&
-            (explicit || ((application as FloatNoteApp).voiceSettings.autoRecord && !askedBefore()))
-        if (ask) requestMic.launch(Manifest.permission.RECORD_AUDIO) else openAndFinish()
+            (explicit || (app.voiceSettings.autoRecord && !askedBefore(KEY_ASKED)))
+        if (ask) requestMic.launch(Manifest.permission.RECORD_AUDIO) else askNotificationsThenOpen()
+    }
+
+    /** Text shared from another app becomes a new note, shown floating (or in the app if it can't float). */
+    private fun openShared() {
+        val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
+        val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()
+        if (text.isNotBlank() || subject.isNotBlank()) app.session.createNote(subject, text)
+        if (Settings.canDrawOverlays(this)) {
+            openFloatingNote()
+        } else {
+            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+        finish()
+    }
+
+    /** Android 13+: without this the floating note's notification (Show/Close) never appears. Asked once. */
+    private fun askNotificationsThenOpen() {
+        val needed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        if (needed && !askedBefore(KEY_ASKED_NOTIFICATIONS)) {
+            requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            openAndFinish()
+        }
     }
 
     private fun openAndFinish() {
@@ -42,22 +89,30 @@ class FloatLaunchActivity : ComponentActivity() {
         finish()
     }
 
-    /** True after the first call: auto-record asks at most once from here. */
-    private fun askedBefore(): Boolean {
+    /** True after the first call for [key]: each prompt is asked at most once from here. */
+    private fun askedBefore(key: String): Boolean {
         val prefs = getSharedPreferences("float_launch", Context.MODE_PRIVATE)
-        val asked = prefs.getBoolean(KEY_ASKED, false)
-        if (!asked) prefs.edit().putBoolean(KEY_ASKED, true).apply()
+        val asked = prefs.getBoolean(key, false)
+        if (!asked) prefs.edit().putBoolean(key, true).apply()
         return asked
     }
 
     companion object {
         private const val EXTRA_REQUEST_MIC = "request_mic"
+
+        /** Set by the "New floating note" shortcut. */
+        const val EXTRA_NEW_NOTE = "new_note"
         private const val KEY_ASKED = "asked_mic"
+        private const val KEY_ASKED_NOTIFICATIONS = "asked_notifications"
 
         /** Asks for the mic, then (re)opens the floating note. Usable from the overlay. */
         fun requestMicIntent(context: Context): Intent =
             Intent(context, FloatLaunchActivity::class.java)
                 .putExtra(EXTRA_REQUEST_MIC, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        /** Opens the floating note, as the launcher entry does. */
+        fun intent(context: Context): Intent =
+            Intent(context, FloatLaunchActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 }

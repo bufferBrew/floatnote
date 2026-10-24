@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the FloatNote icon. Both go through the no-UI FloatLaunchActivity. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="float"
+        android:enabled="true"
+        android:icon="@mipmap/ic_float"
+        android:shortcutShortLabel="@string/shortcut_float">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.bufferbrew.floatnote.FloatLaunchActivity"
+            android:targetPackage="com.bufferbrew.floatnote" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="float_new"
+        android:enabled="true"
+        android:icon="@mipmap/ic_float"
+        android:shortcutShortLabel="@string/shortcut_float_new">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.bufferbrew.floatnote.FloatLaunchActivity"
+            android:targetPackage="com.bufferbrew.floatnote">
+            <extra
+                android:name="new_note"
+                android:value="true" />
+        </intent>
+    </shortcut>
+</shortcuts>

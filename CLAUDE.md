@@ -27,7 +27,7 @@ Solo developer, main-branch workflow.
 - Kotlin · Jetpack Compose + Material 3
 - AGP 9.2.1 (built-in Kotlin) · Gradle 9.4.1 · Compose BOM 2026.06.00 — same as toddler-learn
 - Min SDK 26 (needed for TYPE_APPLICATION_OVERLAY) · Target/Compile SDK 37 · JVM 17 · single `:app` module
-- Persistence: Room (notes + blocks). Settings in DataStore.
+- Persistence: Room (notes, blocks, dictation history, vocabulary). Settings in SharedPreferences.
 - Overlay: a foreground service that adds a `ComposeView` to `WindowManager`
   (`TYPE_APPLICATION_OVERLAY`). The service supplies its own Lifecycle /
   SavedStateRegistry / ViewModelStore owners so Compose works outside an Activity.
@@ -42,6 +42,7 @@ Solo developer, main-branch workflow.
 | Debug build | `./gradlew assembleDebug`  |
 | Install     | `./gradlew installDebug`   |
 | Lint        | `./gradlew lint`           |
+| Release APK | `./gradlew assembleRelease` (unsigned without the signing properties) |
 
 Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change done.
 
@@ -62,7 +63,7 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - `overlay/`: the floating window.
   - `OverlayService`: foreground service (`specialUse`) that owns the window; notification has Show/Close.
   - `OverlayWindow`: one WindowManager window that is either the panel or the bubble; handles
-    focus hand-off, opacity (`LayoutParams.alpha`), move/resize, and saves geometry via `OverlayPrefs`.
+    focus hand-off, opacity (content alpha, never window alpha), move/resize, and saves geometry via `OverlayPrefs`.
   - `OverlayUi.kt`: `OverlayBubble` and `OverlayPanel`. The panel hosts the same
     `NoteListContent` / `NoteEditorContent` as the full app.
   - `WindowDrag.kt`: drag/tap using raw screen coordinates, reported as the total offset since
@@ -70,7 +71,8 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
     the window; Compose drag gestures jitter because the window moves under the finger.
   - `WindowGeometry.kt`: pure clamp/resize maths, unit-tested, plus `PanelSize` presets
     (S/M/L; default Small). The panel's ◐ button shows size chips and the opacity slider.
-- `FloatLaunchActivity`: the "Float note" launcher entry for the Edge panel. No UI. Also asks
+- `FloatLaunchActivity`: the "Float note" launcher entry for the Edge panel, the QS tile, the
+  shortcuts and "Share to FloatNote" (shared text becomes a new note). No UI. Also asks
   for the mic on the overlay's behalf (`requestMicIntent`), since a Service can't.
 - `voice/`: voice notes.
   - `VoiceController`: record → transcribe → `session.addTranscript(noteId, text)`. One per
@@ -84,7 +86,20 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
     Keystore AES-GCM key; base URL, model, language, auto-record).
   - `VoiceUi.kt`: `AutoRecordEffect` (start when a note opens, stop + send when it closes),
     `VoiceStatus` strip, `Waveform`, `AppVoiceActions`.
-- `ui/settings/SettingsContent.kt`: voice settings screen in the full app.
+  - `TranscriptPipeline`: everything heard goes through it, one at a time in order: vocabulary
+    fixes → optional AI clean-up (falls back to the uncleaned text) → note → history.
+- `domain/Vocabulary.kt`: the Wispr-style dictionary. Fixes spellings / applies replacements after
+  recognition, and feeds hints to Whisper (`prompt`) and the device recognizer (`EXTRA_BIASING_STRINGS`, 13+).
+- `data/VoiceRepository.kt` + `data/db/VoiceDao.kt`: dictation history (capped at 500) and vocabulary
+  (Room v2, added by `AutoMigration(1, 2)`).
+- `ai/`: the AI step, OpenAI-compatible `/chat/completions` on the same key and server as Whisper.
+  `NoteAssistant.cleanUp` (per dictation, opt-in) and `organise` (✦ Organise in the editor);
+  `NoteFormat` is the pure JSON in/out with validation (a bad reply never replaces the note).
+  The session (`NoteViewModel.onOrganise`) keeps lines dictated meanwhile, drops the result if you
+  edited, and offers Undo until the note closes.
+- `ui/history/HistoryContent.kt`: dictation history (copy, open note, delete, clear), in both hosts.
+  The floating panel also has a quick note switcher: tap the title (▾) for a row of recent notes.
+- `ui/settings/SettingsContent.kt`: voice, AI and vocabulary settings in the full app.
 
 ## Architecture guardrails
 - Note editor UI is **one composable used by both the Activity and the overlay**:
@@ -96,7 +111,7 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   domain code with unit tests, not in composables.
 - Overlay window: drop `FLAG_NOT_FOCUSABLE` while a text field is focused so the
   keyboard (incl. Wispr Flow) works, and restore it when minimised so touches pass through.
-  Opacity = `LayoutParams.alpha`.
+  Opacity is a graphics layer on the content (see the gotcha below), never `LayoutParams.alpha`.
 - Use theme tokens. No hardcoded colors or dp literals for corners and elevation.
 - Visual style follows Wispr Flow: monochrome ink on warm off-white (near-black in dark mode),
   serif titles, pill chips (`ui/components/Buttons.kt`), large rounded cards, no accent colour.
@@ -128,17 +143,27 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - Overlay windows need `FLAG_LAYOUT_IN_SCREEN` (+ cutout mode ALWAYS on API 30+). Without it
   Android offsets them below the status bar, so x/y aren't screen coordinates. Clamp to
   `usableArea()` (screen minus system bars and cutout), not the raw screen size.
+- Don't open Compose `AlertDialog`/`Dialog` from content the overlay shows: the panel lives in a
+  service window with no Activity token. Confirm inline instead (see `HistoryContent`).
 - Never name a composable `Content()` and call it inside `ComposeView(...).apply { setContent { } }`:
   it resolves to `ComposeView.Content()` and recurses until the app crashes (StackOverflowError).
 - Testing on a device: get coordinates from `adb shell uiautomator dump` or `dumpsys input`
   (window frames), never from a guess. A missed tap lands on whatever app is underneath.
-- Edge panel entry = an `activity-alias` with its own label/icon and a translucent,
-  no-UI Activity that starts the overlay service and immediately `finish()`es.
+- Edge panel entry = a second LAUNCHER activity (`FloatLaunchActivity`) with its own label/icon,
+  translucent and no-UI: it starts the overlay service and immediately `finish()`es. The QS tile
+  (`overlay/FloatTileService`), the app shortcuts (`res/xml/shortcuts.xml`) and the share target
+  all go through it, so the service always starts from a visible Activity.
+- Overlay Back: targetSdk 36+ means predictive back, so KEYCODE_BACK no longer arrives on 13+.
+  `OverlayRootView` registers an `OnBackInvokedCallback` (and keeps the key path for older phones).
 
 ## Secrets
-- The Whisper API key is entered in-app and stored encrypted (Android Keystore AES key +
-  DataStore). Never hardcode it, log it, or commit it. Release signing secrets go in
-  `~/.gradle/gradle.properties`.
+- The API key (Whisper and AI) is entered in-app and stored encrypted (Android Keystore AES key)
+  in the `voice_secret` prefs file, which is excluded from backup (`res/xml/*_rules.xml`). It's
+  only sent to https servers, and only to the host it was saved for until the user allows a new
+  one. Never hardcode it, log it, or commit it.
+- Release signing: `FLOATNOTE_KEYSTORE_PATH`, `FLOATNOTE_STORE_PASSWORD`, `FLOATNOTE_KEY_ALIAS`,
+  `FLOATNOTE_KEY_PASSWORD` in `~/.gradle/gradle.properties`. Without them `assembleRelease` builds an
+  unsigned APK. The version is `VERSION_CODE` / `VERSION_NAME` in the project's gradle.properties.
 
 ## Change safety
 - Smallest change that solves the problem. Match surrounding style. No drive-by refactors.

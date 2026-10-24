@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bufferbrew.floatnote.ai.AiException
+import com.bufferbrew.floatnote.ai.NoteOrganiser
 import com.bufferbrew.floatnote.data.NoteRepository
 import com.bufferbrew.floatnote.domain.NoteEditor
 import com.bufferbrew.floatnote.domain.model.Block
@@ -37,6 +39,8 @@ class NoteViewModel(
     private val persistScope: CoroutineScope,
     private val editor: NoteEditor = NoteEditor(),
     private val saveDelayMs: Long = 400,
+    /** The AI "Organise" step. Null only in tests that don't need it. */
+    private val organiser: NoteOrganiser? = null,
 ) : ViewModel(), NoteEditorActions {
 
     /** All notes for the list screen. */
@@ -49,6 +53,16 @@ class NoteViewModel(
     /** Block the UI should move focus to once, then report back via [onFocusConsumed]. */
     var pendingFocus by mutableStateOf<String?>(null)
         private set
+
+    /** The open note's Organise step. */
+    var assist by mutableStateOf<AssistState>(AssistState.Idle)
+        private set
+
+    private var organiseJob: Job? = null
+
+    /** The note as it was before Organise, for Undo. */
+    private var beforeOrganise: Note? = null
+    private var organisedIds: Set<String> = emptySet()
 
     /** Block that currently has focus, used as the anchor for new blocks. */
     private var focusedBlockId: String? = null
@@ -67,6 +81,17 @@ class NoteViewModel(
         val created = editor.newNote()
         note = created
         pendingFocus = created.blocks.first().id
+    }
+
+    /** Opens a new note holding text shared from another app, and saves it straight away. */
+    fun createNote(title: String, text: String) {
+        closeNote()
+        val created = editor.newNote(title, text)
+        note = created
+        if (!created.isBlank) {
+            dirty = true
+            flush()
+        }
     }
 
     /** Opens the last-edited note, or a new one, unless a note is already open. */
@@ -90,15 +115,38 @@ class NoteViewModel(
         note = null
         focusedBlockId = null
         pendingFocus = null
+        resetAssist()
     }
 
+    /** The note deleted last, offered for Undo on the list until [clearDeleted]. */
+    var recentlyDeleted by mutableStateOf<Note?>(null)
+        private set
+
+    /** Deletes now, but keeps the note in memory so [undoDelete] can bring it back. */
     fun deleteNote(noteId: String) {
-        if (note?.id == noteId) {
+        val open = note?.takeIf { it.id == noteId }
+        if (open != null) {
             saveJob?.cancel()
             dirty = false
             note = null
+            resetAssist()
         }
-        persist { repository.delete(noteId) }
+        viewModelScope.launch {
+            // The open copy has edits that may not be saved yet; otherwise read it before it goes.
+            val deleted = open ?: repository.load(noteId)
+            persist { repository.delete(noteId) }
+            recentlyDeleted = deleted?.takeUnless { it.isBlank }
+        }
+    }
+
+    fun undoDelete() {
+        val restored = recentlyDeleted ?: return
+        recentlyDeleted = null
+        persist { repository.save(restored) }
+    }
+
+    fun clearDeleted() {
+        recentlyDeleted = null
     }
 
     override fun onTitleChange(title: String) = edit { editor.setTitle(it, title) }
@@ -155,6 +203,63 @@ class NoteViewModel(
             val base = repository.load(noteId) ?: Note(id = noteId)
             repository.save(editor.appendTranscript(base, text))
         }
+    }
+
+    /**
+     * Sends the note to the AI model and replaces its content with the organised version.
+     * Lines dictated while it was working are kept (added after the result). If you edited the
+     * note in the meantime, the result is dropped rather than overwrite your edit.
+     */
+    override fun onOrganise() {
+        val snapshot = note ?: return
+        if (assist == AssistState.Working) return
+        val organiser = organiser ?: return
+        // Cancelled by closing the note (resetAssist), so a late result can't land in another note.
+        assist = AssistState.Working
+        organiseJob = viewModelScope.launch {
+            val result = try {
+                organiser.organise(snapshot)
+            } catch (e: AiException) {
+                assist = AssistState.Error(e.message ?: "Organise failed.", e.needsSettings)
+                return@launch
+            }
+            val current = note
+            if (current == null || current.id != snapshot.id) return@launch
+            val snapshotIds = snapshot.blocks.map { it.id }.toSet()
+            val edited = current.title != snapshot.title ||
+                current.blocks.filter { it.id in snapshotIds }.toSet() != snapshot.blocks.toSet() ||
+                current.blocks.count { it.id in snapshotIds } != snapshot.blocks.size
+            if (edited) {
+                assist = AssistState.Error("The note changed while organising, so nothing was replaced. Try again.")
+                return@launch
+            }
+            val added = current.blocks.filter { it.id !in snapshotIds }
+            beforeOrganise = current
+            organisedIds = result.blocks.map { it.id }.toSet()
+            edit { result.copy(blocks = result.blocks + added) }
+            assist = AssistState.Done
+        }
+    }
+
+    /** Restores the note from before Organise, keeping anything dictated since. */
+    override fun onUndoOrganise() {
+        val before = beforeOrganise ?: return
+        edit { current ->
+            val beforeIds = before.blocks.map { it.id }.toSet()
+            val since = current.blocks.filter { it.id !in organisedIds && it.id !in beforeIds }
+            before.copy(blocks = before.blocks + since)
+        }
+        resetAssist()
+    }
+
+    override fun onDismissAssist() = resetAssist()
+
+    private fun resetAssist() {
+        organiseJob?.cancel()
+        organiseJob = null
+        beforeOrganise = null
+        organisedIds = emptySet()
+        assist = AssistState.Idle
     }
 
     override fun onFocusChanged(blockId: String, focused: Boolean) {

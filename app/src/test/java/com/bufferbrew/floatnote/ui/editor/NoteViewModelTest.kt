@@ -52,6 +52,86 @@ class NoteViewModelTest {
                 scope.runCurrent() // finish the load
             }
 
+    private val organiseGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+    private var organiseResult: (Note) -> Note = { it.copy(title = "Organised", blocks = listOf(Block.Text("o1", "tidy"))) }
+
+    private fun organisingViewModel() =
+        NoteViewModel(
+            repository, scope, NoteEditor { "new${++counter}" }, saveDelayMs = 400,
+            organiser = { note ->
+                organiseGate.await()
+                organiseResult(note)
+            },
+        ).also {
+            it.ensureOpen()
+            scope.runCurrent()
+        }
+
+    @Test
+    fun `organise replaces the note and undo restores it`() {
+        val vm = organisingViewModel()
+        vm.onOrganise()
+        scope.runCurrent()
+        assertEquals(AssistState.Working, vm.assist)
+        organiseGate.complete(Unit)
+        scope.runCurrent()
+        assertEquals(AssistState.Done, vm.assist)
+        assertEquals("Organised", vm.note?.title)
+        assertEquals(listOf(Block.Text("o1", "tidy")), vm.note?.blocks)
+        vm.onUndoOrganise()
+        assertEquals(start, vm.note)
+        assertEquals(AssistState.Idle, vm.assist)
+    }
+
+    @Test
+    fun `speech added while organising is kept, and survives undo`() {
+        val vm = organisingViewModel()
+        vm.onOrganise()
+        scope.runCurrent()
+        vm.addTranscript("n", "said meanwhile")
+        organiseGate.complete(Unit)
+        scope.runCurrent()
+        assertEquals(listOf("tidy", "said meanwhile"), vm.note?.blocks?.map { it.text })
+        vm.addTranscript("n", "said after")
+        vm.onUndoOrganise()
+        assertEquals(listOf("first", "second", "said meanwhile", "said after"), vm.note?.blocks?.map { it.text })
+    }
+
+    @Test
+    fun `an edit while organising wins over the result`() {
+        val vm = organisingViewModel()
+        vm.onOrganise()
+        scope.runCurrent()
+        vm.onTextChange("a", "edited")
+        organiseGate.complete(Unit)
+        scope.runCurrent()
+        assertTrue(vm.assist is AssistState.Error)
+        assertEquals("edited", vm.note?.blocks?.first()?.text)
+    }
+
+    @Test
+    fun `an organise failure leaves the note alone`() {
+        organiseResult = { throw com.bufferbrew.floatnote.ai.AiException("nope", needsSettings = true) }
+        val vm = organisingViewModel()
+        vm.onOrganise()
+        organiseGate.complete(Unit)
+        scope.runCurrent()
+        assertEquals(AssistState.Error("nope", needsSettings = true), vm.assist)
+        assertEquals(start, vm.note)
+    }
+
+    @Test
+    fun `closing the note drops a pending organise`() {
+        val vm = organisingViewModel()
+        vm.onOrganise()
+        scope.runCurrent()
+        vm.closeNote()
+        organiseGate.complete(Unit)
+        scope.runCurrent()
+        assertNull(vm.note)
+        assertEquals(AssistState.Idle, vm.assist)
+    }
+
     @Before
     fun setUp() = Dispatchers.setMain(dispatcher)
 
@@ -161,6 +241,43 @@ class NoteViewModelTest {
         assertNull(vm.note)
         assertEquals(listOf("n"), repository.deleted)
         assertTrue(repository.saved.isEmpty())
+    }
+
+    @Test
+    fun `undo after deleting the open note restores it with unsaved edits`() {
+        val vm = viewModel()
+        vm.onToggle("a")
+        val edited = vm.note
+        vm.deleteNote("n")
+        scope.runCurrent()
+        assertEquals(edited, vm.recentlyDeleted)
+        vm.undoDelete()
+        scope.runCurrent()
+        assertEquals(listOf(edited), repository.saved)
+        assertNull(vm.recentlyDeleted)
+    }
+
+    @Test
+    fun `deleting from the list loads the note first so it can be undone`() {
+        val vm = viewModel()
+        vm.closeNote()
+        scope.advanceTimeBy(1_000)
+        vm.deleteNote("n")
+        scope.runCurrent()
+        assertEquals(listOf("n"), repository.deleted)
+        assertEquals(start, vm.recentlyDeleted)
+        vm.clearDeleted()
+        assertNull(vm.recentlyDeleted)
+    }
+
+    @Test
+    fun `shared text opens as a new saved note`() {
+        val vm = viewModel()
+        vm.createNote("From Chrome", "  an article link  ")
+        scope.runCurrent()
+        assertEquals("From Chrome", vm.note?.title)
+        assertEquals("an article link", vm.note?.blocks?.single()?.text)
+        assertEquals(vm.note, repository.saved.last())
     }
 
     @Test

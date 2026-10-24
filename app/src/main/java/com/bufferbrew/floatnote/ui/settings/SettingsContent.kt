@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -24,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.bufferbrew.floatnote.R
+import com.bufferbrew.floatnote.domain.model.VocabEntry
 import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.theme.Dimens
 import com.bufferbrew.floatnote.voice.VoiceEngine
@@ -38,6 +40,11 @@ fun SettingsContent(
     settings: VoiceSettings,
     micGranted: Boolean,
     onRequestMic: () -> Unit,
+    vocabulary: List<VocabEntry>,
+    onAddVocab: (term: String, replacement: String) -> Unit,
+    onDeleteVocab: (Long) -> Unit,
+    openNewNote: Boolean,
+    onOpenNewNoteChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -48,6 +55,9 @@ fun SettingsContent(
     var baseUrl by remember { mutableStateOf(settings.baseUrl) }
     var model by remember { mutableStateOf(settings.model) }
     var language by remember { mutableStateOf(settings.language) }
+    var hostConfirmed by remember { mutableIntStateOf(0) }
+    var aiCleanup by remember { mutableStateOf(settings.aiCleanup) }
+    var aiModel by remember { mutableStateOf(settings.aiModel) }
     val colors = MaterialTheme.colorScheme
 
     Column(
@@ -68,6 +78,18 @@ fun SettingsContent(
                     settings.autoRecord = it
                 },
             )
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.settings_float_new_note))
+                Text(
+                    stringResource(R.string.settings_float_new_note_help),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+            Switch(checked = openNewNote, onCheckedChange = onOpenNewNoteChange)
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -104,7 +126,7 @@ fun SettingsContent(
             )
         }
 
-        if (engine == VoiceEngine.Whisper) Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
             OutlinedTextField(
                 value = keyDraft,
                 onValueChange = { keyDraft = it },
@@ -143,13 +165,39 @@ fun SettingsContent(
             }
         }
 
-        if (engine == VoiceEngine.Whisper) SettingField(
+        SettingField(
             value = baseUrl,
             onChange = { baseUrl = it; settings.baseUrl = it },
             label = stringResource(R.string.settings_base_url),
             help = stringResource(R.string.settings_base_url_help),
             keyboardType = KeyboardType.Uri,
         )
+        // Re-read on every change of address or key; hostConfirmed bumps it after Allow.
+        val urlValid = remember(baseUrl) { settings.baseUrlValid }
+        val needsConfirm = remember(baseUrl, hasKey, hostConfirmed) { settings.hostNeedsConfirm }
+        if (!urlValid) {
+            Text(
+                stringResource(R.string.settings_base_url_invalid),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.error,
+            )
+        } else if (needsConfirm) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.settings_host_confirm, settings.keyHost.orEmpty()),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                )
+                PillButton(
+                    text = stringResource(R.string.settings_host_allow),
+                    onClick = {
+                        settings.confirmHost()
+                        hostConfirmed++
+                    },
+                    selected = true,
+                )
+            }
+        }
         if (engine == VoiceEngine.Whisper) SettingField(
             value = model,
             onChange = { model = it; settings.model = it },
@@ -162,6 +210,87 @@ fun SettingsContent(
             label = stringResource(R.string.settings_language),
             help = stringResource(R.string.settings_language_help),
         )
+
+        Text(stringResource(R.string.settings_ai), style = MaterialTheme.typography.headlineSmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.settings_ai_cleanup))
+                Text(
+                    stringResource(if (hasKey) R.string.settings_ai_cleanup_help else R.string.settings_ai_needs_key),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = aiCleanup,
+                onCheckedChange = {
+                    aiCleanup = it
+                    settings.aiCleanup = it
+                },
+            )
+        }
+        SettingField(
+            value = aiModel,
+            onChange = { aiModel = it; settings.aiModel = it },
+            label = stringResource(R.string.settings_ai_model),
+            help = stringResource(R.string.settings_ai_model_help),
+        )
+
+        VocabularySection(vocabulary, onAddVocab, onDeleteVocab)
+    }
+}
+
+/** Wispr-style dictionary: words to recognise, optionally rewritten to something else. */
+@Composable
+private fun VocabularySection(
+    entries: List<VocabEntry>,
+    onAdd: (String, String) -> Unit,
+    onDelete: (Long) -> Unit,
+) {
+    var term by remember { mutableStateOf("") }
+    var replacement by remember { mutableStateOf("") }
+    val colors = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+        Text(stringResource(R.string.vocab_title), style = MaterialTheme.typography.headlineSmall)
+        Text(
+            stringResource(R.string.vocab_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = term,
+            onValueChange = { term = it },
+            label = { Text(stringResource(R.string.vocab_word)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = replacement,
+            onValueChange = { replacement = it },
+            label = { Text(stringResource(R.string.vocab_replacement)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        PillButton(
+            text = stringResource(R.string.vocab_add),
+            onClick = {
+                if (term.isNotBlank()) {
+                    onAdd(term, replacement)
+                    term = ""
+                    replacement = ""
+                }
+            },
+            selected = term.isNotBlank(),
+        )
+        entries.forEach { entry ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (entry.replacement.isBlank()) entry.term else "${entry.term} → ${entry.replacement}",
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { onDelete(entry.id) }) { Text(stringResource(R.string.delete)) }
+            }
+        }
     }
 }
 

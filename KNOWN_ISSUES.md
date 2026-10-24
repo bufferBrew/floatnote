@@ -26,7 +26,7 @@
 - What changed / what shortcut was taken: the app declares POST_NOTIFICATIONS but never asks for it. On Android 13+ the foreground-service notification (with Show/Close) stays hidden until the user allows notifications in Settings. The overlay itself works either way.
 - Ceiling (when this breaks): a user who closes the bubble's app and wants the notification to bring the note back.
 - Upgrade trigger (what to do when it's hit): request POST_NOTIFICATIONS the first time the user taps Float.
-- Status: open
+- Status: resolved (2026-10-24, asked once from FloatLaunchActivity and from the app's Float button)
 
 ## 2026-10-24 — Overlay not yet tested on a device
 - What changed / what shortcut was taken: the overlay (focus hand-off, drag, resize, opacity, edge-panel entry) is built and unit-tested where it's pure logic, but hasn't been run on a phone or emulator. None is set up on the dev Mac.
@@ -99,3 +99,54 @@
 - Ceiling (when this breaks): phones whose default recognizer needs the network and whose on-device one also returns nothing.
 - Upgrade trigger (what to do when it's hit): surface which recognizer is in use in Settings and let the user pick.
 - Status: open
+
+## 2026-10-24 — History, vocabulary, AI clean-up/Organise, note switcher
+- What changed / what shortcut was taken: dictation history (Room v2, auto-migration from v1), a
+  vocabulary, an optional AI clean-up of each dictation, ✦ Organise for a whole note, and a quick
+  note switcher in the floating panel. The AI uses the same key and server as Whisper, with
+  `gpt-4o-mini` as the default chat model. Built and unit-tested (89 tests), **not yet run on a
+  device** (the phone was disconnected).
+- Ceiling (when this breaks):
+  - Clean-up and Organise send note text to the configured API provider.
+  - Clean-up adds one network round trip per dictation; with the device engine that's one per
+    sentence, so text lands a moment later.
+  - Organise Undo lasts only until the note closes.
+  - An edit made while Organise is running discards its result.
+  - History keeps the newest 500 dictations.
+  - Device-recognizer hints need Android 13+ and a recognition service that honours them;
+    vocabulary fixes after recognition always apply.
+  - (Fixed the same day: long-press delete is now immediate with an Undo bar, no dialog.)
+- Upgrade trigger (what to do when it's hit):
+  - Organise previews or a version history if users want to compare.
+  - Batch device sentences before clean-up if the latency bothers users.
+  - Move the list's delete confirm inline if it crashes in the overlay.
+  - Add a Room `MigrationTestHelper` test for 1→2.
+- Status: open
+
+## 2026-10-24 — Improvement backlog P1 items (#2–#14 in IMPROVEMENTS.md)
+- What changed / what shortcut was taken:
+  - Launching: Quick Settings tile, app shortcuts ("Floating note", "New floating note"), and a
+    "Float note opens a new note" setting.
+  - Sharing: "Share to FloatNote" makes a new floating note; ✦ Share sends a note out.
+  - Overlay Back on Android 13+ uses `OnBackInvokedCallback`.
+  - Recording stops after 45 s of silence. A Whisper clip with no speech at all is dropped,
+    not uploaded.
+  - API key: kept in its own `voice_secret` prefs file, excluded from backup. It's only sent to
+    https servers, and only to the host it was saved for until you allow a new one.
+  - Long-press delete with Undo (8 s).
+  - The editor scrolls to new lines and follows dictation when you're at the end.
+  - Checkboxes are labelled for TalkBack.
+  - Robolectric Room tests: the 1→2 migration and the DAOs.
+  - Release signing from `FLOATNOTE_*` properties; the version lives in gradle.properties.
+  - All built and unit-tested (102 tests); not yet run on the phone.
+- Ceiling (when this breaks):
+  - The silence thresholds (`RECORDER_QUIET` 0.05, `LIVE_QUIET` 0.3) are estimates. A noisy room
+    may keep recording; a very soft voice may stop early.
+  - Undo after delete lives in memory only: the process dying in those 8 s loses it.
+  - Excluding `voice_secret` means the key must be re-entered on a new phone (it couldn't be
+    decrypted there anyway). Other voice settings still back up.
+  - Schemas ship inside debug APKs (assets) so Robolectric can read them.
+- Upgrade trigger (what to do when it's hit):
+  - Tune the thresholds from real recordings, or expose them as a setting.
+  - Move to a soft-delete column (Room v3 + migration test) if the in-memory Undo isn't enough.
+- Status: open (needs a device check)

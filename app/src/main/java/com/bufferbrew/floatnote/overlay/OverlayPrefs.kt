@@ -25,6 +25,11 @@ class OverlayPrefs(context: Context) {
             prefs.edit().putInt(KEY_LAYOUT_VERSION, LAYOUT_VERSION).apply()
         }
 
+    /** "Float note" (Edge panel, tile) starts a new note instead of reopening the last one. */
+    var openNewNote: Boolean
+        get() = prefs.getBoolean(KEY_OPEN_NEW, false)
+        set(value) = prefs.edit().putBoolean(KEY_OPEN_NEW, value).apply()
+
     var bubble: WindowRect?
         get() = readRect("bubble")
         set(value) = writeRect("bubble", value)
@@ -57,6 +62,7 @@ class OverlayPrefs(context: Context) {
         const val MIN_OPACITY = 0.3f
         private const val KEY_OPACITY = "opacity"
         private const val KEY_LAYOUT_VERSION = "layout_version"
+        private const val KEY_OPEN_NEW = "open_new_note"
         // 3: thinner presets; panels saved at the old sizes start over at the new small default.
         private const val LAYOUT_VERSION = 3
     }
