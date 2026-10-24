@@ -59,6 +59,17 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - `ui/list/NoteListContent.kt`: the stateless note list (long-press to delete, with a confirm).
   The app opens on the list. A note left blank is deleted on close instead of saved.
 
+- `overlay/`: the floating window.
+  - `OverlayService`: foreground service (`specialUse`) that owns the window; notification has Show/Close.
+  - `OverlayWindow`: one WindowManager window that is either the panel or the bubble; handles
+    focus hand-off, opacity (`LayoutParams.alpha`), move/resize, and saves geometry via `OverlayPrefs`.
+  - `OverlayUi.kt`: `OverlayBubble` and `OverlayPanel`. The panel hosts the same
+    `NoteListContent` / `NoteEditorContent` as the full app.
+  - `WindowDrag.kt`: drag/tap using raw screen coordinates. Use it for anything that moves
+    the window; Compose drag gestures jitter because the window moves under the finger.
+  - `WindowGeometry.kt`: pure clamp/resize maths, unit-tested.
+- `FloatLaunchActivity`: the "Float note" launcher entry for the Edge panel. No UI.
+
 ## Architecture guardrails
 - Note editor UI is **one composable used by both the Activity and the overlay**:
   `NoteEditorContent` + `NoteViewModel`. Never fork editor logic for floating mode; that's

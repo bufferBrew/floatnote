@@ -18,4 +18,17 @@
     <string name="delete_note_body">“%1$s” will be deleted. This can\'t be undone.</string>
     <string name="delete">Delete</string>
     <string name="cancel">Cancel</string>
+    <string name="open_floating_note">Open floating note</string>
+    <string name="move_window">Drag to move</string>
+    <string name="resize_window">Drag to resize</string>
+    <string name="opacity">Opacity</string>
+    <string name="opacity_value">Opacity %1$d%%</string>
+    <string name="minimise">Minimise</string>
+    <string name="close_floating">Close floating note</string>
+    <string name="float_launcher_label">Float note</string>
+    <string name="float_button">Float</string>
+    <string name="overlay_channel">Floating note</string>
+    <string name="overlay_notification_title">Floating note is open</string>
+    <string name="overlay_notification_text">Tap to show it</string>
+    <string name="overlay_permission_needed">Allow FloatNote to display over other apps, then try again</string>
 </resources>

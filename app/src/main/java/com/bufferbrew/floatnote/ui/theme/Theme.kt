@@ -31,6 +31,8 @@ object Dimens {
     val SpaceS = 8.dp
     val SpaceM = 16.dp
     val CornerM = 12.dp
+    val ElevationPanel = 6.dp
+    val TouchTarget = 48.dp
 }
 
 @Composable

@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Floating window over other apps; granted by the user in Settings. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".FloatNoteApp"
         android:allowBackup="true"
@@ -19,6 +25,35 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+            Second launcher entry, "Float note": add this one to the Edge panel. No UI; it opens
+            the floating window and finishes. Own empty task so it never brings MainActivity forward.
+        -->
+        <activity
+            android:name=".FloatLaunchActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:icon="@mipmap/ic_float"
+            android:label="@string/float_launcher_label"
+            android:noHistory="true"
+            android:roundIcon="@mipmap/ic_float"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".overlay.OverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Floating note window drawn over other apps while the user writes in it" />
+        </service>
     </application>
 
 </manifest>

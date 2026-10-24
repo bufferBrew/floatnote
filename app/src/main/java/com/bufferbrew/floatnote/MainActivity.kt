@@ -6,6 +6,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -13,10 +15,12 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import com.bufferbrew.floatnote.overlay.openFloatingNote
 import com.bufferbrew.floatnote.ui.editor.NoteEditorContent
 import com.bufferbrew.floatnote.ui.list.NoteListContent
 import com.bufferbrew.floatnote.ui.theme.Dimens
@@ -39,18 +43,25 @@ class MainActivity : ComponentActivity() {
                     val note = session.note
                     if (note == null) {
                         val notes by session.notes.collectAsState(initial = emptyList())
-                        NoteListContent(
-                            notes = notes,
-                            onOpen = session::open,
-                            onCreate = session::createNote,
-                            onDelete = session::deleteNote,
-                            modifier = contentModifier,
-                        )
+                        Column(contentModifier) {
+                            FloatButton()
+                            NoteListContent(
+                                notes = notes,
+                                onOpen = session::open,
+                                onCreate = session::createNote,
+                                onDelete = session::deleteNote,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     } else {
                         BackHandler { session.closeNote() }
                         Column(contentModifier) {
-                            TextButton(onClick = session::closeNote) {
-                                Text(stringResource(R.string.back_to_notes))
+                            Row {
+                                TextButton(onClick = session::closeNote) {
+                                    Text(stringResource(R.string.back_to_notes))
+                                }
+                                Spacer(Modifier.weight(1f))
+                                FloatButton()
                             }
                             NoteEditorContent(
                                 note = note,
@@ -63,6 +74,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** Hands the open note to the floating window and steps out of the way. */
+    @Composable
+    private fun FloatButton() {
+        TextButton(onClick = {
+            if (openFloatingNote()) moveTaskToBack(true)
+        }) { Text(stringResource(R.string.float_button)) }
     }
 
     // The process can be killed any time after this, so don't wait for the save debounce.

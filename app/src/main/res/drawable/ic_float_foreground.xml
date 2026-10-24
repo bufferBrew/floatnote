@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Float note" launcher: a small note card floating over a larger faint window. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#668FC1C4"
+        android:pathData="M32,30h44a4,4 0,0 1,4 4v40a4,4 0,0 1,-4 4h-44a4,4 0,0 1,-4 -4v-40a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#FFF5F1E6"
+        android:pathData="M48,46h26a4,4 0,0 1,4 4v24a4,4 0,0 1,-4 4h-26a4,4 0,0 1,-4 -4v-24a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#FF2F5D62"
+        android:pathData="M51,54h20v3h-20zM51,61h20v3h-20zM51,68h12v3h-12z" />
+</vector>
