@@ -1,0 +1,82 @@
+# FloatNote — Project Memory
+
+Android note-taking app built to be used *on top of* other apps. A floating, adjustable-opacity
+note window, a minimised draggable bubble, and voice capture that starts by default.
+Not a Brew product: don't apply brew/AGENTS.md rules or rename to <Thing>Brew.
+Solo developer, main-branch workflow.
+
+## Product requirements (source of truth)
+1. Note content is a list of blocks:
+   - **Text**: plain paragraph.
+   - **Checklist item**: checking it strikes the text through. It stays in place.
+   - **Task item**: a checkbox with a per-note "on complete" mode:
+     **Move to bottom** or **Keep in place**. "Bottom" means the end of the task's group
+     (adjacent tasks), not the end of the note. Logic: `domain/NoteEditor.kt`.
+2. **Floating mode**: a window drawn over other apps (no split screen, no leaving the
+   current app), with an opacity slider.
+3. **Feature parity**: everything in the full app (editing, all block types, both task
+   modes, voice, opacity) must work in floating mode too. No floating-only gaps.
+4. **Quick launch**: a separate launcher entry "Float note" that can be added to the
+   Samsung Edge panel and opens the floating note straight away. Also a Quick Settings tile
+   and an app shortcut. The window minimises to a small bubble you can drag anywhere;
+   the bubble's position is remembered.
+5. **Voice by default**: opening a note (floating or full) starts recording unless that's
+   turned off in settings. Audio goes to a cloud Whisper API and the text is added to the note.
+
+## Tech stack
+- Kotlin · Jetpack Compose + Material 3
+- AGP 9.2.1 (built-in Kotlin) · Gradle 9.4.1 · Compose BOM 2026.06.00 — same as toddler-learn
+- Min SDK 26 (needed for TYPE_APPLICATION_OVERLAY) · Target/Compile SDK 37 · JVM 17 · single `:app` module
+- Persistence: Room (notes + blocks). Settings in DataStore.
+- Overlay: a foreground service that adds a `ComposeView` to `WindowManager`
+  (`TYPE_APPLICATION_OVERLAY`). The service supplies its own Lifecycle /
+  SavedStateRegistry / ViewModelStore owners so Compose works outside an Activity.
+- Voice: `MediaRecorder` (AAC/m4a) → `POST /v1/audio/transcriptions` (OpenAI-compatible;
+  the base URL can be changed so Groq etc. work too). HTTP via OkHttp.
+- Tests: JUnit 4 + MockK, pure JVM unit tests
+
+## Build / test / run (macOS)
+| Task        | Command                    |
+|-------------|----------------------------|
+| Run tests   | `./gradlew testDebugUnitTest` |
+| Debug build | `./gradlew assembleDebug`  |
+| Install     | `./gradlew installDebug`   |
+| Lint        | `./gradlew lint`           |
+
+Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change done.
+
+## Architecture guardrails
+- Note editor UI is **one composable used by both the Activity and the overlay**.
+  Never fork editor logic for floating mode; that's how parity breaks.
+- Block ordering rules (task "move to bottom" vs "keep in place") live in pure Kotlin
+  domain code with unit tests, not in composables.
+- Overlay window: drop `FLAG_NOT_FOCUSABLE` while a text field is focused so the
+  keyboard (incl. Wispr Flow) works, and restore it when minimised so touches pass through.
+  Opacity = `LayoutParams.alpha`.
+- Use theme tokens. No hardcoded colors or dp literals for corners and elevation.
+
+## Platform gotchas (check before touching overlay/voice/launch code)
+- `SYSTEM_ALERT_WINDOW` is granted by the user in Settings. Detect it with
+  `Settings.canDrawOverlays` and guide the user there.
+- The mic foreground service needs `foregroundServiceType="microphone"` plus
+  `FOREGROUND_SERVICE_MICROPHONE` (Android 14+). Microphone FGS while-in-use access
+  requires the start to come from a visible UI: launch it from the trampoline Activity /
+  tile click, never from a background broadcast.
+- QS tile on Android 14+: use `startActivityAndCollapse(PendingIntent)`.
+- Edge panel entry = an `activity-alias` with its own label/icon and a translucent,
+  no-UI Activity that starts the overlay service and immediately `finish()`es.
+
+## Secrets
+- The Whisper API key is entered in-app and stored encrypted (Android Keystore AES key +
+  DataStore). Never hardcode it, log it, or commit it. Release signing secrets go in
+  `~/.gradle/gradle.properties`.
+
+## Change safety
+- Smallest change that solves the problem. Match surrounding style. No drive-by refactors.
+- Verify a symbol/file exists before referencing it. Don't invent APIs.
+- Don't commit, push, or open PRs unless asked. Never commit `graphify-out/`.
+- Record shortcuts and limits in `KNOWN_ISSUES.md`.
+
+## Tooling
+- graphify CLI is installed but no graph is built yet. Run `graphify .` once there's
+  code to enable graph-aware debugging and query-first navigation.
