@@ -5,7 +5,9 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.WindowInsets
 import android.view.WindowManager
+import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 import android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 import android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 import android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
@@ -43,9 +45,14 @@ class OverlayWindow(
     private var opacity by mutableFloatStateOf(prefs.opacity)
     private var focusable = true
 
-    private val bubbleSize = dp(56)
-    private var panel = prefs.panel ?: defaultPanel()
-    private var bubble = prefs.bubble ?: defaultBubble()
+    // A short pill, like Wispr Flow's floating bar.
+    private val bubbleWidth = dp(BUBBLE_WIDTH_DP)
+    private val bubbleHeight = dp(BUBBLE_HEIGHT_DP)
+    private var panel = (prefs.panel ?: defaultPanel()).clampedTo(usableArea())
+    // Saved positions may predate a bubble size change, so always apply the current size.
+    private var bubble = (prefs.bubble ?: defaultBubble())
+        .copy(width = bubbleWidth, height = bubbleHeight)
+        .clampedTo(usableArea())
 
     private val params = WindowManager.LayoutParams(
         WindowManager.LayoutParams.WRAP_CONTENT,
@@ -55,6 +62,12 @@ class OverlayWindow(
         PixelFormat.TRANSLUCENT,
     ).apply {
         gravity = Gravity.TOP or Gravity.START
+        // Without these, Android quietly offsets an overlay below the status bar, so x/y stop
+        // being screen coordinates and the edge limits are off by the status bar's height.
+        flags = flags or FLAG_LAYOUT_IN_SCREEN
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
     }
 
     private val root = OverlayRootView(
@@ -71,7 +84,7 @@ class OverlayWindow(
             owner.start()
             root.setViewTreeLifecycleOwner(owner)
             root.setViewTreeSavedStateRegistryOwner(owner)
-            root.addView(ComposeView(context).apply { setContent { Content() } })
+            root.addView(ComposeView(context).apply { setContent { OverlayContent() } })
             applyLayout()
             windowManager.addView(root, params)
             attached = true
@@ -94,9 +107,9 @@ class OverlayWindow(
 
     /** Screen size or orientation changed: pull both windows back on screen. */
     fun onScreenChanged() {
-        val (w, h) = screenSize()
-        panel = panel.clampedTo(w, h)
-        bubble = bubble.clampedTo(w, h)
+        val area = usableArea()
+        panel = panel.clampedTo(area)
+        bubble = bubble.clampedTo(area)
         update()
     }
 
@@ -108,7 +121,7 @@ class OverlayWindow(
     }
 
     @Composable
-    private fun Content() {
+    private fun OverlayContent() {
         FloatNoteTheme {
             when (mode) {
                 OverlayMode.Bubble -> OverlayBubble(
@@ -137,20 +150,17 @@ class OverlayWindow(
     }
 
     private fun movePanel(dx: Int, dy: Int) {
-        val (w, h) = screenSize()
-        panel = panel.movedBy(dx, dy).clampedTo(w, h)
+        panel = panel.movedBy(dx, dy).clampedTo(usableArea())
         update()
     }
 
     private fun resizePanel(dx: Int, dy: Int) {
-        val (w, h) = screenSize()
-        panel = panel.resizedBy(dx, dy, dp(MIN_PANEL_WIDTH_DP), dp(MIN_PANEL_HEIGHT_DP), w, h)
+        panel = panel.resizedBy(dx, dy, dp(MIN_PANEL_WIDTH_DP), dp(MIN_PANEL_HEIGHT_DP), usableArea())
         update()
     }
 
     private fun moveBubble(dx: Int, dy: Int) {
-        val (w, h) = screenSize()
-        bubble = bubble.movedBy(dx, dy).clampedTo(w, h)
+        bubble = bubble.movedBy(dx, dy).clampedTo(usableArea())
         update()
     }
 
@@ -186,25 +196,36 @@ class OverlayWindow(
      * window isn't pushed up by it the way an Activity is.
      */
     private fun defaultPanel(): WindowRect {
-        val (w, h) = screenSize()
-        val width = (w * 0.9f).toInt().coerceAtMost(dp(420))
-        val height = (h * 0.45f).toInt()
-        return WindowRect((w - width) / 2, (h * 0.08f).toInt(), width, height).clampedTo(w, h)
+        val area = usableArea()
+        val width = (area.width * 0.9f).toInt().coerceAtMost(dp(420))
+        val height = (area.height * 0.45f).toInt()
+        val top = area.y + (area.height * 0.05f).toInt()
+        return WindowRect(area.x + (area.width - width) / 2, top, width, height)
     }
 
     private fun defaultBubble(): WindowRect {
-        val (w, h) = screenSize()
-        return WindowRect(w - bubbleSize, h / 3, bubbleSize, bubbleSize)
+        val area = usableArea()
+        return WindowRect(area.right - bubbleWidth - dp(8), area.y + area.height / 3, bubbleWidth, bubbleHeight)
     }
 
-    private fun screenSize(): Pair<Int, Int> =
+    /** The screen minus the status bar, navigation bar and camera cutout, in screen pixels. */
+    private fun usableArea(): WindowRect {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val bounds = windowManager.currentWindowMetrics.bounds
-            bounds.width() to bounds.height()
-        } else {
-            val metrics = context.resources.displayMetrics
-            metrics.widthPixels to metrics.heightPixels
+            val metrics = windowManager.currentWindowMetrics
+            val bounds = metrics.bounds
+            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
+                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+            )
+            return WindowRect(
+                x = insets.left,
+                y = insets.top,
+                width = bounds.width() - insets.left - insets.right,
+                height = bounds.height() - insets.top - insets.bottom,
+            )
         }
+        val metrics = context.resources.displayMetrics
+        return WindowRect(0, 0, metrics.widthPixels, metrics.heightPixels)
+    }
 
     private fun dp(value: Int): Int = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), context.resources.displayMetrics,
@@ -213,5 +234,7 @@ class OverlayWindow(
     private companion object {
         const val MIN_PANEL_WIDTH_DP = 220
         const val MIN_PANEL_HEIGHT_DP = 200
+        const val BUBBLE_WIDTH_DP = 64
+        const val BUBBLE_HEIGHT_DP = 36
     }
 }

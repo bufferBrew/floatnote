@@ -13,11 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +39,7 @@ import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.BlockType
 import com.bufferbrew.floatnote.domain.model.Note
 import com.bufferbrew.floatnote.domain.model.TaskCompletionMode
+import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.theme.Dimens
 
 /** Alpha for completed tasks, which stay readable but recede. */
@@ -93,7 +92,6 @@ fun NoteEditorContent(
                 )
             }
         }
-        HorizontalDivider()
         EditorToolbar(taskMode = note.taskMode, actions = actions)
     }
 }
@@ -184,33 +182,28 @@ private fun EditorTextField(
 private fun EditorToolbar(taskMode: TaskCompletionMode, actions: NoteEditorActions) {
     // Scrolls sideways so it fits a narrow floating window.
     Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(vertical = Dimens.SpaceS),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = { actions.onChangeType(BlockType.Text) }) {
-            Text(stringResource(R.string.block_text))
-        }
-        TextButton(onClick = { actions.onChangeType(BlockType.Checklist) }) {
-            Text(stringResource(R.string.block_checklist))
-        }
-        TextButton(onClick = { actions.onChangeType(BlockType.Task) }) {
-            Text(stringResource(R.string.block_task))
-        }
-        TextButton(
+        PillButton(stringResource(R.string.block_text), { actions.onChangeType(BlockType.Text) })
+        PillButton(stringResource(R.string.block_checklist), { actions.onChangeType(BlockType.Checklist) })
+        PillButton(stringResource(R.string.block_task), { actions.onChangeType(BlockType.Task) })
+        PillButton(
+            text = stringResource(
+                if (taskMode == TaskCompletionMode.MoveToBottom) R.string.mode_move_to_bottom
+                else R.string.mode_keep_in_place
+            ),
             onClick = {
                 actions.onTaskModeChange(
                     if (taskMode == TaskCompletionMode.MoveToBottom) TaskCompletionMode.KeepInPlace
                     else TaskCompletionMode.MoveToBottom
                 )
             },
-        ) {
-            Text(
-                stringResource(
-                    if (taskMode == TaskCompletionMode.MoveToBottom) R.string.mode_move_to_bottom
-                    else R.string.mode_keep_in_place
-                )
-            )
-        }
+            selected = taskMode == TaskCompletionMode.MoveToBottom,
+        )
     }
 }

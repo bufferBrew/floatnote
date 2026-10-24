@@ -32,4 +32,16 @@
 - What changed / what shortcut was taken: the overlay (focus hand-off, drag, resize, opacity, edge-panel entry) is built and unit-tested where it's pure logic, but hasn't been run on a phone or emulator. None is set up on the dev Mac.
 - Ceiling (when this breaks): any device-specific behaviour, especially Samsung One UI and the Edge panel.
 - Upgrade trigger (what to do when it's hit): install the debug APK on the phone, or set up an emulator, and go through the overlay by hand.
+- Status: resolved (2026-10-24, checked over adb on a Galaxy S25 Ultra, Android 17: launch, panel drag, typing, checkbox, focus hand-off, opacity, minimise, bubble drag and edge clamp, tap to reopen. Found and fixed a crash on open and a status-bar offset in window positions.)
+
+## 2026-10-24 — Window edges on Android 8–10
+- What changed / what shortcut was taken: the usable area (screen minus status/navigation bars) is read from `WindowMetrics`, which only exists on Android 11+. On 8–10 the full screen size is used, so the panel or bubble can be dragged under the status bar.
+- Ceiling (when this breaks): anyone on Android 10 or older.
+- Upgrade trigger (what to do when it's hit): read the status/navigation bar heights from the root view's `WindowInsets` on older versions.
+- Status: open
+
+## 2026-10-24 — Wispr Flow look is inferred, not copied
+- What changed / what shortcut was taken: Wispr Flow blocks screenshots of its UI, so the style (monochrome palette, serif titles, pill chips, dark pill bubble with a waveform) is based on its public look rather than measured against it.
+- Ceiling (when this breaks): if it doesn't feel close enough to Wispr Flow next to the real thing.
+- Upgrade trigger (what to do when it's hit): compare against screenshots the user takes (Wispr blocks adb captures) and adjust `Theme.kt` and `OverlayUi.kt`.
 - Status: open

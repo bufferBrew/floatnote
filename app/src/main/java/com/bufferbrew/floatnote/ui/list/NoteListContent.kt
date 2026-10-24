@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.domain.model.NoteSummary
+import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.theme.Dimens
 
 /**
@@ -56,7 +56,7 @@ fun NoteListContent(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
-            Button(onClick = onCreate) { Text(stringResource(R.string.new_note)) }
+            PillButton(stringResource(R.string.new_note), onCreate, selected = true)
         }
         if (notes.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -99,7 +99,7 @@ fun NoteListContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    HorizontalDivider()
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                 }
             }
         }

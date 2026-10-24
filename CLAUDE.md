@@ -82,6 +82,9 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   keyboard (incl. Wispr Flow) works, and restore it when minimised so touches pass through.
   Opacity = `LayoutParams.alpha`.
 - Use theme tokens. No hardcoded colors or dp literals for corners and elevation.
+- Visual style follows Wispr Flow: monochrome ink on warm off-white (near-black in dark mode),
+  serif titles, pill chips (`ui/components/Buttons.kt`), large rounded cards, no accent colour.
+  The bubble is a small dark pill with a waveform and stays dark in both themes (`BubbleColors`).
 
 ## Platform gotchas (check before touching overlay/voice/launch code)
 - `SYSTEM_ALERT_WINDOW` is granted by the user in Settings. Detect it with
@@ -91,6 +94,13 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   requires the start to come from a visible UI: launch it from the trampoline Activity /
   tile click, never from a background broadcast.
 - QS tile on Android 14+: use `startActivityAndCollapse(PendingIntent)`.
+- Overlay windows need `FLAG_LAYOUT_IN_SCREEN` (+ cutout mode ALWAYS on API 30+). Without it
+  Android offsets them below the status bar, so x/y aren't screen coordinates. Clamp to
+  `usableArea()` (screen minus system bars and cutout), not the raw screen size.
+- Never name a composable `Content()` and call it inside `ComposeView(...).apply { setContent { } }`:
+  it resolves to `ComposeView.Content()` and recurses until the app crashes (StackOverflowError).
+- Testing on a device: get coordinates from `adb shell uiautomator dump` or `dumpsys input`
+  (window frames), never from a guess. A missed tap lands on whatever app is underneath.
 - Edge panel entry = an `activity-alias` with its own label/icon and a translucent,
   no-UI Activity that starts the overlay service and immediately `finish()`es.
 

@@ -12,15 +12,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.bufferbrew.floatnote.overlay.openFloatingNote
+import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.editor.NoteEditorContent
 import com.bufferbrew.floatnote.ui.list.NoteListContent
 import com.bufferbrew.floatnote.ui.theme.Dimens
@@ -44,7 +47,10 @@ class MainActivity : ComponentActivity() {
                     if (note == null) {
                         val notes by session.notes.collectAsState(initial = emptyList())
                         Column(contentModifier) {
-                            FloatButton()
+                            Row(Modifier.padding(top = Dimens.SpaceS)) {
+                                Spacer(Modifier.weight(1f))
+                                FloatButton()
+                            }
                             NoteListContent(
                                 notes = notes,
                                 onOpen = session::open,
@@ -56,9 +62,12 @@ class MainActivity : ComponentActivity() {
                     } else {
                         BackHandler { session.closeNote() }
                         Column(contentModifier) {
-                            Row {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(onClick = session::closeNote) {
-                                    Text(stringResource(R.string.back_to_notes))
+                                    Text(
+                                        stringResource(R.string.back_to_notes),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                                 Spacer(Modifier.weight(1f))
                                 FloatButton()
@@ -79,9 +88,11 @@ class MainActivity : ComponentActivity() {
     /** Hands the open note to the floating window and steps out of the way. */
     @Composable
     private fun FloatButton() {
-        TextButton(onClick = {
-            if (openFloatingNote()) moveTaskToBack(true)
-        }) { Text(stringResource(R.string.float_button)) }
+        PillButton(
+            text = stringResource(R.string.float_button),
+            onClick = { if (openFloatingNote()) moveTaskToBack(true) },
+            selected = true,
+        )
     }
 
     // The process can be killed any time after this, so don't wait for the save debounce.
