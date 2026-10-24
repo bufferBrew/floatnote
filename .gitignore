@@ -13,6 +13,10 @@ local.properties
 *.keystore
 *.jks
 keystore.properties
+*.p12
+*.pem
+*.env
+.env*
 
 # IDE
 .idea/

@@ -74,6 +74,13 @@ class VoiceController(
 
     val isRecording: Boolean get() = state is VoiceState.Recording
 
+    /**
+     * A note auto-record must leave alone until a different note is opened: set when another
+     * app (not the user) opened it, so auto-record can't let any app switch the microphone on.
+     * Tapping Record still works.
+     */
+    var autoRecordBlockedFor: String? = null
+
     private var sampler: Job? = null
     private var recordingFile: File? = null
     private var recordingNote: String? = null

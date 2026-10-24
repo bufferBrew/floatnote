@@ -176,3 +176,9 @@
   - Persist undo per note if people want it after reopening.
   - Organise preview (#33).
 - Status: open (needs a device check)
+
+## 2026-10-24 — Auto-record only trusts launches the user made
+- What changed / what shortcut was taken: `FloatLaunchActivity` is exported (launcher, Edge panel, share target), so any app could open it and, with auto-record on, switch the mic on. Now auto-record skips the note opened at launch unless `getReferrer()` (with no `EXTRA_REFERRER*` extras) is FloatNote, a system app or the default home app. Shared text never auto-records. Tapping Record always works.
+- Ceiling (when this breaks): a third-party launcher or edge app that isn't the default home and isn't preinstalled opens the note without auto-recording. Preinstalled apps are trusted as a group.
+- Upgrade trigger (what to do when it's hit): if users of other launchers ask, add a "trusted launchers" list in Settings, or check `getLaunchedFromPackage()` on Android 14+.
+- Status: open

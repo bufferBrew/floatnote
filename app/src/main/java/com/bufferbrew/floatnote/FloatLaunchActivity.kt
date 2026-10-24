@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import com.bufferbrew.floatnote.overlay.OverlayPrefs
 import com.bufferbrew.floatnote.overlay.openFloatingNote
@@ -52,8 +53,10 @@ class FloatLaunchActivity : ComponentActivity() {
         if (newNote || OverlayPrefs(this).openNewNote) {
             app.session.createNote()
         }
+        val byUser = openedByUser()
+        if (!byUser) app.voice.autoRecordBlockedFor = app.session.note?.id
         // The mic button always asks; auto-record asks only the first time.
-        val explicit = intent.getBooleanExtra(EXTRA_REQUEST_MIC, false)
+        val explicit = byUser && intent.getBooleanExtra(EXTRA_REQUEST_MIC, false)
         val ask = !hasMicPermission() &&
             (explicit || (app.voiceSettings.autoRecord && !askedBefore(KEY_ASKED)))
         if (ask) requestMic.launch(Manifest.permission.RECORD_AUDIO) else askNotificationsThenOpen()
@@ -64,6 +67,8 @@ class FloatLaunchActivity : ComponentActivity() {
         val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
         val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()
         if (text.isNotBlank() || subject.isNotBlank()) app.session.createNote(subject, text)
+        // Any app can share to us, so a shared note never starts recording by itself.
+        app.voice.autoRecordBlockedFor = app.session.note?.id
         if (Settings.canDrawOverlays(this)) {
             openFloatingNote()
         } else {
@@ -87,6 +92,27 @@ class FloatLaunchActivity : ComponentActivity() {
     private fun openAndFinish() {
         openFloatingNote()
         finish()
+    }
+
+    /**
+     * Whether the app that started us is one the user drives directly: FloatNote itself (the
+     * tile, the mic prompt), a system app (Samsung's Edge panel, SystemUI) or the default home
+     * screen (the icon, its shortcuts). This activity is exported, so any other app could open it
+     * without the user asking; those opens mustn't start the microphone through auto-record.
+     */
+    private fun openedByUser(): Boolean {
+        // A caller can set these to fake getReferrer(); without them it's the package the system recorded.
+        if (intent.hasExtra(Intent.EXTRA_REFERRER) || intent.hasExtra(Intent.EXTRA_REFERRER_NAME)) return false
+        val caller = referrer?.takeIf { it.scheme == "android-app" }?.host ?: return false
+        if (caller == packageName) return true
+        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        if (caller == packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName) {
+            return true
+        }
+        // The caller is visible to us because it started us, so this lookup works on Android 11+.
+        return runCatching {
+            packageManager.getApplicationInfo(caller, 0).flags and ApplicationInfo.FLAG_SYSTEM != 0
+        }.getOrDefault(false)
     }
 
     /** True after the first call for [key]: each prompt is asked at most once from here. */

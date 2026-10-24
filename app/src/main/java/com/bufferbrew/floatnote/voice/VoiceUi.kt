@@ -107,7 +107,9 @@ fun AutoRecordEffect(noteId: String?) {
     val context = LocalContext.current
     val app = context.applicationContext as FloatNoteApp
     LaunchedEffect(noteId) {
-        if (noteId != null && app.voiceSettings.autoRecord && app.voiceSettings.isReady &&
+        if (noteId != app.voice.autoRecordBlockedFor) app.voice.autoRecordBlockedFor = null
+        if (noteId != null && noteId != app.voice.autoRecordBlockedFor &&
+            app.voiceSettings.autoRecord && app.voiceSettings.isReady &&
             context.hasMicPermission()
         ) {
             app.voice.start(noteId)
