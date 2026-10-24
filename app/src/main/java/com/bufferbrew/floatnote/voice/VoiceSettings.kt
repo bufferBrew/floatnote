@@ -60,8 +60,9 @@ class VoiceSettings(context: Context) {
         }
     }
 
+    /** Off by default: recording starts when you tap Record. */
     var autoRecord: Boolean
-        get() = prefs.getBoolean(KEY_AUTO, true)
+        get() = prefs.getBoolean(KEY_AUTO, false)
         set(value) = prefs.edit().putBoolean(KEY_AUTO, value).apply()
 
     /** Until chosen: Whisper if a key has been saved, otherwise the device recognizer. */
@@ -191,7 +192,8 @@ class VoiceSettings(context: Context) {
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_BITS = 128
 
-        private const val KEY_AUTO = "auto_record"
+        // "auto_record" was on by default until 2026-10-24; a new key turns it off for everyone.
+        private const val KEY_AUTO = "auto_record_opt_in"
         private const val KEY_ENGINE = "engine"
         private const val KEY_BASE_URL = "base_url"
         private const val KEY_MODEL = "model"

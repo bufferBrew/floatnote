@@ -78,7 +78,10 @@ class MainActivity : ComponentActivity() {
         askForMicOnce()
 
         setContent {
-            val voiceActions = remember { AppVoiceActions(this) }
+            // Ask for the mic here, not through FloatLaunchActivity, which would float the note.
+            val voiceActions = remember {
+                AppVoiceActions(this, requestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) })
+            }
             FloatNoteTheme {
                 Surface(Modifier.fillMaxSize()) {
                     val contentModifier = Modifier
@@ -223,10 +226,10 @@ class MainActivity : ComponentActivity() {
         if (openFloatingNote()) moveTaskToBack(true)
     }
 
-    /** Voice is on by default, so ask for the mic up front, but only the first time. */
+    /** With auto-record on, ask for the mic up front, but only the first time. */
     private fun askForMicOnce() {
         val prefs = getSharedPreferences("main", Context.MODE_PRIVATE)
-        if (micGranted || prefs.getBoolean(KEY_ASKED_MIC, false)) return
+        if (!app.voiceSettings.autoRecord || micGranted || prefs.getBoolean(KEY_ASKED_MIC, false)) return
         prefs.edit().putBoolean(KEY_ASKED_MIC, true).apply()
         requestMic.launch(Manifest.permission.RECORD_AUDIO)
     }

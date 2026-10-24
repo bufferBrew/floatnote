@@ -66,6 +66,8 @@ fun Context.hasMicPermission(): Boolean =
 class AppVoiceActions(
     private val context: Context,
     private val beforeOpeningScreen: () -> Unit = {},
+    /** How to ask for the mic; by default through FloatLaunchActivity (the overlay has no Activity). */
+    private val requestMic: (() -> Unit)? = null,
 ) : VoiceActions {
     private val app get() = context.applicationContext as FloatNoteApp
 
@@ -73,6 +75,7 @@ class AppVoiceActions(
         val noteId = app.session.note?.id ?: return
         // Not set up yet (Whisper without a key): toggle() explains; no point asking for the mic.
         if (app.voiceSettings.isReady && !context.hasMicPermission()) {
+            requestMic?.let { it(); return }
             beforeOpeningScreen()
             context.startActivity(FloatLaunchActivity.requestMicIntent(context))
             return
@@ -93,7 +96,7 @@ class AppVoiceActions(
 }
 
 /**
- * Starts recording when a note opens, if auto-record is on and voice is set up, and stops
+ * Starts recording when a note opens, if auto-record is on (off by default) and voice is set up, and stops
  * (sending the clip) when that note closes or this host goes away. Both hosts use it; starting
  * twice for the same note is a no-op.
  */

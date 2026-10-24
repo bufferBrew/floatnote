@@ -20,8 +20,9 @@ Solo developer, main-branch workflow.
    Samsung Edge panel and opens the floating note straight away. Also a Quick Settings tile
    and an app shortcut. The window minimises to a small bubble you can drag anywhere;
    the bubble's position is remembered.
-5. **Voice by default**: opening a note (floating or full) starts recording unless that's
-   turned off in settings. Audio goes to a cloud Whisper API and the text is added to the note.
+5. **Voice on tap**: recording starts when you tap ● Record (floating or full). Auto-record on
+   note open is an opt-in setting, off by default (changed 2026-10-24 at the user's request).
+   Speech goes to a cloud Whisper API or the phone's recognizer, and the text is added to the note.
 
 ## Tech stack
 - Kotlin · Jetpack Compose + Material 3
