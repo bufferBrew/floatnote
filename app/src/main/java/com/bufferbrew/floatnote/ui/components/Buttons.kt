@@ -24,6 +24,7 @@ fun PillButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    dense: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     Surface(
@@ -31,13 +32,16 @@ fun PillButton(
         shape = CircleShape,
         color = if (selected) colors.primary else colors.surfaceVariant,
         contentColor = if (selected) colors.onPrimary else colors.onSurface,
-        modifier = modifier.defaultMinSize(minHeight = Dimens.ChipHeight),
+        modifier = modifier.defaultMinSize(minHeight = if (dense) Dimens.CompactChipHeight else Dimens.ChipHeight),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text,
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(horizontal = Dimens.SpaceM, vertical = Dimens.SpaceS),
+                style = if (dense) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(
+                    horizontal = if (dense) Dimens.SpaceS + Dimens.SpaceXs else Dimens.SpaceM,
+                    vertical = if (dense) Dimens.SpaceXs else Dimens.SpaceS,
+                ),
             )
         }
     }
@@ -45,9 +49,15 @@ fun PillButton(
 
 /** Small round icon button with a full-size touch target around it. */
 @Composable
-fun CircleButton(glyph: String, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun CircleButton(
+    glyph: String,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    dense: Boolean = false,
+) {
     Box(
-        modifier = modifier.size(Dimens.TouchTarget),
+        modifier = modifier.size(if (dense) Dimens.CompactTouchTarget else Dimens.TouchTarget),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
@@ -56,7 +66,7 @@ fun CircleButton(glyph: String, label: String, onClick: () -> Unit, modifier: Mo
             color = MaterialTheme.colorScheme.surfaceVariant,
             contentColor = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier
-                .size(Dimens.HeaderButton)
+                .size(if (dense) Dimens.CompactButton else Dimens.HeaderButton)
                 .semantics {
                     role = Role.Button
                     contentDescription = label

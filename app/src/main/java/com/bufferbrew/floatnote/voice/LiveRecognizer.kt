@@ -44,9 +44,14 @@ interface LiveRecognizer {
  * Android's [SpeechRecognizer], kept listening until [stop].
  *
  * The platform recognizer ends each session at a pause, so this restarts it after every
- * sentence (and after silence timeouts) to give continuous dictation. It prefers the on-device
- * recognizer (offline, private); if that has no model for the language it falls back to the
- * phone's default recognition service for the rest of the session.
+ * sentence (and after silence timeouts) to give continuous dictation.
+ *
+ * Which recognizer: the phone's default recognition service first (on Samsung/Pixel that's
+ * Google's dictation service, offline when a language pack is installed, since we ask for
+ * EXTRA_PREFER_OFFLINE). The "on-device" recognizer API is only the fallback: on a Galaxy S25
+ * Ultra it runs Google's offline engine in an ambient one-shot mode that hears speech but
+ * returns empty transcripts. Whichever is in use, if it hears speech yet returns nothing
+ * [EMPTY_SWITCH] times in a row, we switch to the other for the rest of the session.
  *
  * Restarts reuse the same [SpeechRecognizer] and are posted a moment later. Destroying and
  * recreating it straight from a callback races the recognition service's own shutdown and
@@ -93,6 +98,12 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
     private var stopping = false
     private var usingOnDevice = false
 
+    /** Speech was heard in the current session (onBeginningOfSpeech). */
+    private var heardSpeech = false
+
+    /** Sessions in a row that heard speech but produced no text. */
+    private var emptyAfterSpeech = 0
+
     override fun start(language: String, listener: LiveRecognizer.Listener) {
         cancel()
         this.language = language
@@ -100,11 +111,13 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
         active = true
         stopping = false
         reconnects = 0
-        usingOnDevice = onDeviceAvailable()
-        if (!usingOnDevice && !SpeechRecognizer.isRecognitionAvailable(context)) {
+        emptyAfterSpeech = 0
+        val defaultAvailable = SpeechRecognizer.isRecognitionAvailable(context)
+        if (!defaultAvailable && !onDeviceAvailable()) {
             active = false
             throw IllegalStateException("No speech recognizer on this phone")
         }
+        usingOnDevice = !defaultAvailable
         lastHeardAt = SystemClock.elapsedRealtime()
         listen()
         handler.postDelayed(watchdog, WATCHDOG_CHECK_MS)
@@ -154,12 +167,28 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
                 finish()
                 return@postDelayed
             }
-            if (rebuildFirst) rebuild()
+            if (rebuildFirst || recognizer == null) rebuild()
             startListening()
         }, RESTART_DELAY_MS)
     }
 
+    /** The current recognizer keeps hearing speech but returning nothing: try the other one. */
+    private fun noteEmptyResult() {
+        if (!heardSpeech) return
+        emptyAfterSpeech++
+        if (emptyAfterSpeech < EMPTY_SWITCH) return
+        val other = !usingOnDevice
+        val otherAvailable = if (other) onDeviceAvailable() else SpeechRecognizer.isRecognitionAvailable(context)
+        if (!otherAvailable) return
+        Log.w(TAG, "recognizer returns empty text after speech; switching (onDevice=$other)")
+        usingOnDevice = other
+        emptyAfterSpeech = 0
+        recognizer?.destroy()
+        recognizer = null
+    }
+
     private fun startListening() {
+        heardSpeech = false
         recognizer?.startListening(
             Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -195,7 +224,13 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
         override fun onResults(results: Bundle?) {
             lastHeardAt = SystemClock.elapsedRealtime()
             reconnects = 0
-            best(results)?.takeIf { it.isNotBlank() }?.let { listener?.onSegment(it.trim()) }
+            val text = best(results)?.trim().orEmpty()
+            if (text.isNotEmpty()) {
+                emptyAfterSpeech = 0
+                listener?.onSegment(text)
+            } else {
+                noteEmptyResult()
+            }
             continueOrFinish()
         }
 
@@ -204,7 +239,10 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
             Log.d(TAG, "recognizer error $error (onDevice=$usingOnDevice, stopping=$stopping)")
             when (error) {
                 // Silence or nothing understood: not a failure in dictation, just keep listening.
-                SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> continueOrFinish()
+                SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                    noteEmptyResult()
+                    continueOrFinish()
+                }
                 SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
                     if (usingOnDevice) {
                         // No offline model for this language: use the phone's regular service.
@@ -235,7 +273,10 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
         override fun onReadyForSpeech(params: Bundle?) {
             lastHeardAt = SystemClock.elapsedRealtime()
         }
-        override fun onBeginningOfSpeech() = Unit
+        override fun onBeginningOfSpeech() {
+            lastHeardAt = SystemClock.elapsedRealtime()
+            heardSpeech = true
+        }
         override fun onBufferReceived(buffer: ByteArray?) = Unit
         override fun onEndOfSpeech() = Unit
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
@@ -255,6 +296,7 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
         const val TAG = "FloatNoteVoice"
         const val RESTART_DELAY_MS = 150L
         const val MAX_RECONNECTS = 3
+        const val EMPTY_SWITCH = 2
         const val WATCHDOG_MS = 8_000L
         const val WATCHDOG_CHECK_MS = 2_000L
     }

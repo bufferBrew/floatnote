@@ -57,6 +57,7 @@ class OverlayPrefs(context: Context) {
         const val MIN_OPACITY = 0.3f
         private const val KEY_OPACITY = "opacity"
         private const val KEY_LAYOUT_VERSION = "layout_version"
-        private const val LAYOUT_VERSION = 2
+        // 3: thinner presets; panels saved at the old sizes start over at the new small default.
+        private const val LAYOUT_VERSION = 3
     }
 }

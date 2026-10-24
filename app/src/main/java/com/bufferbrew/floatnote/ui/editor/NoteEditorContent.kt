@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,10 +58,15 @@ fun NoteEditorContent(
     note: Note,
     pendingFocus: String?,
     actions: NoteEditorActions,
-    voiceState: VoiceState,
+    voiceState: () -> VoiceState,
     voiceActions: VoiceActions,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
+    // Read voice state only where it's drawn: it changes ~12×/s while listening, and reading it
+    // here would redraw the whole editor that often.
+    val recording by remember { derivedStateOf { voiceState() is VoiceState.Recording } }
+    val typography = MaterialTheme.typography
     Column(modifier) {
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -71,8 +77,8 @@ fun NoteEditorContent(
                     value = note.title,
                     onValueChange = actions::onTitleChange,
                     hint = stringResource(R.string.title_hint),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(vertical = Dimens.SpaceS),
+                    style = if (compact) typography.titleMedium else typography.titleLarge,
+                    modifier = Modifier.padding(vertical = if (compact) Dimens.SpaceXs else Dimens.SpaceS),
                 )
             }
             if (note.blocks.isEmpty()) {
@@ -93,6 +99,7 @@ fun NoteEditorContent(
                     block = block,
                     requestFocus = pendingFocus == block.id,
                     actions = actions,
+                    compact = compact,
                     modifier = Modifier.animateItem(),
                 )
             }
@@ -101,8 +108,9 @@ fun NoteEditorContent(
         EditorToolbar(
             taskMode = note.taskMode,
             actions = actions,
-            recording = voiceState is VoiceState.Recording,
+            recording = recording,
             onMic = voiceActions::onMicToggle,
+            dense = compact,
         )
     }
 }
@@ -112,6 +120,7 @@ private fun BlockRow(
     block: Block,
     requestFocus: Boolean,
     actions: NoteEditorActions,
+    compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -123,7 +132,7 @@ private fun BlockRow(
         }
     }
 
-    val baseStyle = MaterialTheme.typography.bodyLarge
+    val baseStyle = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge
     val style = when (block) {
         is Block.Text -> baseStyle
         is Block.Checklist ->
@@ -195,24 +204,26 @@ private fun EditorToolbar(
     actions: NoteEditorActions,
     recording: Boolean,
     onMic: () -> Unit,
+    dense: Boolean,
 ) {
     // Scrolls sideways so it fits a narrow floating window.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(vertical = Dimens.SpaceS),
-        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
+            .padding(vertical = if (dense) Dimens.SpaceXs else Dimens.SpaceS),
+        horizontalArrangement = Arrangement.spacedBy(if (dense) Dimens.SpaceXs else Dimens.SpaceS),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PillButton(
             text = stringResource(if (recording) R.string.voice_stop else R.string.voice_record),
             onClick = onMic,
             selected = recording,
+            dense = dense,
         )
-        PillButton(stringResource(R.string.block_text), { actions.onChangeType(BlockType.Text) })
-        PillButton(stringResource(R.string.block_checklist), { actions.onChangeType(BlockType.Checklist) })
-        PillButton(stringResource(R.string.block_task), { actions.onChangeType(BlockType.Task) })
+        PillButton(stringResource(R.string.block_text), { actions.onChangeType(BlockType.Text) }, dense = dense)
+        PillButton(stringResource(R.string.block_checklist), { actions.onChangeType(BlockType.Checklist) }, dense = dense)
+        PillButton(stringResource(R.string.block_task), { actions.onChangeType(BlockType.Task) }, dense = dense)
         PillButton(
             text = stringResource(
                 if (taskMode == TaskCompletionMode.MoveToBottom) R.string.mode_move_to_bottom
@@ -225,6 +236,7 @@ private fun EditorToolbar(
                 )
             },
             selected = taskMode == TaskCompletionMode.MoveToBottom,
+            dense = dense,
         )
     }
 }

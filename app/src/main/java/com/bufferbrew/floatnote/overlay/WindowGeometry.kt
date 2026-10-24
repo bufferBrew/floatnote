@@ -2,9 +2,9 @@ package com.bufferbrew.floatnote.overlay
 
 /** Panel size presets, in dp. The corner handle still allows any size in between. */
 enum class PanelSize(val widthDp: Int, val heightDp: Int) {
-    Small(260, 300),
-    Medium(320, 420),
-    Large(380, 560),
+    Small(220, 260),
+    Medium(280, 360),
+    Large(340, 480),
 }
 
 /** An overlay window's position and size in screen pixels (top-left origin). */

@@ -76,14 +76,26 @@
 - Upgrade trigger (what to do when it's hit): on API 33+, use `RecognizerIntent.EXTRA_SEGMENTED_SESSION` with `onSegmentResults`/`onEndOfSegmentedSession`.
 - Status: open
 
-## 2026-10-24 — Device engine not yet tried on the phone
+## 2026-10-24 — Device engine not yet tried on the phone (now tried)
 - What changed / what shortcut was taken: the controller logic is unit-tested with a fake recognizer, but the real `SpeechRecognizer` (offline model availability, background use from the floating window, Samsung vs Google recognizer) hasn't been run on the S25 Ultra yet.
 - Ceiling (when this breaks): the phone's recognizer refusing to run while another app is in front, or having no offline model for the chosen language.
 - Upgrade trigger (what to do when it's hit): pick "This phone" in Settings, dictate from the floating window over another app, and read the log.
-- Status: open
+- Status: resolved (2026-10-24, dictated over a video app on the S25 Ultra; sentences landed in the note; mic not silenced in the background)
 
 ## 2026-10-24 — Guards against the app getting stuck
 - What changed / what shortcut was taken: user reported the app "gets stuck at times". No crash or ANR was in the phone's log, so the fixes target every wait that could look frozen: Whisper uploads now have a 90 s overall limit and a Cancel button (audio kept for Retry); the device recognizer has an 8 s watchdog that reconnects a silent speech service (max 3 times in a row); window drags are measured from the drag start so the window can't fall out of step with the finger at a screen edge; the panel defaults to small (260×300 dp) so it covers less of the app underneath.
 - Ceiling (when this breaks): a stuck state not covered above.
 - Upgrade trigger (what to do when it's hit): ask what was on screen when it stuck, capture `adb logcat` (tag FloatNoteVoice) and `dumpsys window`, and add a guard for that case.
-- Status: open (watching for reports)
+- Status: resolved (2026-10-24). The real cause of "non-responsive" was found in the phone's input log: the opacity slider set window alpha, and Android drops all touches on windows below its alpha threshold. Opacity is now drawn as content alpha. CPU while listening also dropped from ~50% to ~5–10% (waveform drawn in one Canvas pass at 10 Hz, voice state read only where drawn).
+
+## 2026-10-24 — Floating panel touch targets are 36 dp
+- What changed / what shortcut was taken: to make the panel thin, its buttons, checkboxes and chips use 36 dp touch targets instead of the recommended 48 dp (`LocalMinimumInteractiveComponentSize` in `OverlayPanel`). The full app keeps 48 dp.
+- Ceiling (when this breaks): users who find the small targets hard to hit.
+- Upgrade trigger (what to do when it's hit): add a "comfortable" density option that restores 48 dp in the panel.
+- Status: open
+
+## 2026-10-24 — Google's on-device recognizer returns empty text
+- What changed / what shortcut was taken: on the S25 Ultra, `createOnDeviceSpeechRecognizer` runs Google's offline engine in an ambient one-shot mode that detects speech but returns empty transcripts. The app now uses the phone's default recognition service (Google's dictation service, still offline with a language pack) and only falls back to the on-device API; it switches automatically after two empty-after-speech results.
+- Ceiling (when this breaks): phones whose default recognizer needs the network and whose on-device one also returns nothing.
+- Upgrade trigger (what to do when it's hit): surface which recognizer is in use in Settings and let the user pick.
+- Status: open

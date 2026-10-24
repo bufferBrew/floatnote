@@ -25,7 +25,9 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -53,7 +56,7 @@ import com.bufferbrew.floatnote.ui.theme.BubbleColors
 import com.bufferbrew.floatnote.ui.theme.Dimens
 import com.bufferbrew.floatnote.voice.VoiceActions
 import com.bufferbrew.floatnote.voice.VoiceState
-import com.bufferbrew.floatnote.voice.WaveBar
+import com.bufferbrew.floatnote.voice.Waveform
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -69,7 +72,8 @@ private const val BubbleBars = 5
  */
 @Composable
 fun OverlayBubble(
-    voiceState: VoiceState,
+    voiceState: () -> VoiceState,
+    opacity: Float,
     onTap: () -> Unit,
     onDragStart: () -> Unit,
     onDrag: (Int, Int) -> Unit,
@@ -79,6 +83,7 @@ fun OverlayBubble(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer { alpha = opacity }
             .clip(CircleShape)
             .background(BubbleColors.Fill)
             .border(Dimens.Hairline, BubbleColors.Edge, CircleShape)
@@ -90,31 +95,26 @@ fun OverlayBubble(
             },
         contentAlignment = Alignment.Center,
     ) {
-        val levels = when (voiceState) {
-            is VoiceState.Recording -> {
-                // Mirror the latest samples around the centre bar, like a voice meter.
-                val recent = voiceState.levels.takeLast(3).let { List(3 - it.size) { 0f } + it }
-                listOf(recent[0], recent[1], recent[2], recent[1], recent[0])
-            }
-            VoiceState.Transcribing -> pulsingLevels()
-            else -> RestingLevels
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Dimens.WaveBarWidth),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            levels.take(BubbleBars).forEach { level ->
-                WaveBar(level, BubbleColors.Content, Dimens.BubbleWaveMaxHeight)
-            }
-        }
+        BubbleWave(voiceState)
     }
 }
 
-/**
- * The expanded floating window: a soft rounded card. Hosts the same note list and editor as the
- * full app, so every editing feature works here too; only the frame (grab bar to move, corner to
- * resize, opacity, minimise, close) is new.
- */
+/** Its own scope, so only the bars redraw as the voice level changes. */
+@Composable
+private fun BubbleWave(voiceState: () -> VoiceState) {
+    val state = voiceState()
+    val levels = when (state) {
+        is VoiceState.Recording -> {
+            // Mirror the latest samples around the centre bar, like a voice meter.
+            val recent = state.levels.takeLast(3).let { List(3 - it.size) { 0f } + it }
+            listOf(recent[0], recent[1], recent[2], recent[1], recent[0])
+        }
+        VoiceState.Transcribing -> pulsingLevels()
+        else -> RestingLevels
+    }
+    Waveform(levels.take(BubbleBars), BubbleColors.Content, Dimens.BubbleWaveMaxHeight, bars = BubbleBars)
+}
+
 /** A soft wave travelling across the bars while the clip is being transcribed. */
 @Composable
 private fun pulsingLevels(): List<Float> {
@@ -128,10 +128,18 @@ private fun pulsingLevels(): List<Float> {
     return List(BubbleBars) { i -> 0.15f + 0.25f * (1 + sin(phase - i * 0.9f)) }
 }
 
+/**
+ * The expanded floating window: a slim rounded card. Hosts the same note list and editor as the
+ * full app (in their compact style), so every editing feature works here too; only the frame
+ * (drag the title to move, corner to resize, size/opacity, minimise, close) is new.
+ *
+ * Opacity is applied as a graphics layer on this content, never as window alpha (see
+ * [OverlayWindow]). Touch targets are 36 dp here instead of 48 dp to keep the panel thin.
+ */
 @Composable
 fun OverlayPanel(
     session: NoteViewModel,
-    voiceState: VoiceState,
+    voiceState: () -> VoiceState,
     voiceActions: VoiceActions,
     panelSize: PanelSize?,
     onPanelSize: (PanelSize) -> Unit,
@@ -149,72 +157,74 @@ fun OverlayPanel(
     val note = session.note
     val shape = RoundedCornerShape(Dimens.CornerL)
 
-    Surface(
-        modifier = Modifier
-            .fillMaxSize()
-            .border(Dimens.Hairline, MaterialTheme.colorScheme.outline, shape),
-        shape = shape,
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = Dimens.ElevationPanel,
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            // Bottom padding keeps the chip row clear of the resize corner.
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(start = Dimens.SpaceM, end = Dimens.SpaceM, bottom = Dimens.SpaceL),
-            ) {
-                PanelHeader(
-                    title = note?.title?.ifBlank { stringResource(R.string.untitled) }
-                        ?: stringResource(R.string.notes_title),
-                    onMoveStart = onGeometryStart,
-                    onMove = onMove,
-                    onMoveEnd = onGeometryDone,
-                    onToggleAdjust = { showAdjust = !showAdjust },
-                    onMinimise = onMinimise,
-                    onClose = onClose,
-                )
-                if (showAdjust) {
-                    SizeRow(panelSize, onPanelSize)
-                    OpacityRow(opacity, onOpacityChange, onOpacityChangeFinished)
-                }
-                val bodyModifier = Modifier.weight(1f).fillMaxWidth()
-                if (note == null) {
-                    val notes by session.notes.collectAsState(initial = emptyList())
-                    NoteListContent(
-                        notes = notes,
-                        onOpen = session::open,
-                        onCreate = session::createNote,
-                        onDelete = session::deleteNote,
-                        modifier = bodyModifier,
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dimens.CompactTouchTarget) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = opacity }
+                .border(Dimens.Hairline, MaterialTheme.colorScheme.outline, shape),
+            shape = shape,
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = Dimens.ElevationPanel,
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                // Bottom padding keeps the chip row clear of the resize corner.
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(start = Dimens.SpaceS, end = Dimens.SpaceXs, bottom = Dimens.SpaceM),
+                ) {
+                    PanelHeader(
+                        title = note?.title?.ifBlank { stringResource(R.string.untitled) }
+                            ?: stringResource(R.string.notes_title),
+                        onBack = if (note != null) session::closeNote else null,
+                        onMoveStart = onGeometryStart,
+                        onMove = onMove,
+                        onMoveEnd = onGeometryDone,
+                        onToggleAdjust = { showAdjust = !showAdjust },
+                        onMinimise = onMinimise,
+                        onClose = onClose,
                     )
-                } else {
-                    Column(bodyModifier) {
-                        TextButton(onClick = session::closeNote) {
-                            Text(
-                                stringResource(R.string.back_to_notes),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                    if (showAdjust) {
+                        SizeRow(panelSize, onPanelSize)
+                        OpacityRow(opacity, onOpacityChange, onOpacityChangeFinished)
+                    }
+                    val bodyModifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(start = Dimens.SpaceXs, end = Dimens.SpaceXs)
+                    if (note == null) {
+                        val notes by session.notes.collectAsState(initial = emptyList())
+                        NoteListContent(
+                            notes = notes,
+                            onOpen = session::open,
+                            onCreate = session::createNote,
+                            onDelete = session::deleteNote,
+                            modifier = bodyModifier,
+                        )
+                    } else {
                         NoteEditorContent(
                             note = note,
                             pendingFocus = session.pendingFocus,
                             actions = session,
                             voiceState = voiceState,
                             voiceActions = voiceActions,
-                            modifier = Modifier.weight(1f),
+                            modifier = bodyModifier,
+                            compact = true,
                         )
                     }
                 }
+                ResizeHandle(onGeometryStart, onResize, onGeometryDone, Modifier.align(Alignment.BottomEnd))
             }
-            ResizeHandle(onGeometryStart, onResize, onGeometryDone, Modifier.align(Alignment.BottomEnd))
         }
     }
 }
 
+/** One slim row: back (in a note), draggable title, then size/opacity, minimise and close. */
 @Composable
 private fun PanelHeader(
     title: String,
+    onBack: (() -> Unit)?,
     onMoveStart: () -> Unit,
     onMove: (Int, Int) -> Unit,
     onMoveEnd: () -> Unit,
@@ -224,31 +234,29 @@ private fun PanelHeader(
 ) {
     val moveLabel = stringResource(R.string.move_window)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        // The grab bar and title drag the window; the buttons beside them still take taps.
-        Column(
+        if (onBack != null) {
+            CircleButton("‹", stringResource(R.string.back_to_notes), onBack, dense = true)
+        }
+        // The title drags the window; the buttons beside it still take taps.
+        Box(
             modifier = Modifier
                 .weight(1f)
+                .height(Dimens.CompactTouchTarget)
                 .windowDrag(onDragStart = onMoveStart, onDrag = onMove, onDragEnd = onMoveEnd)
                 .semantics { contentDescription = moveLabel }
-                .padding(top = Dimens.SpaceS, bottom = Dimens.SpaceXs),
+                .padding(horizontal = Dimens.SpaceXs),
+            contentAlignment = Alignment.CenterStart,
         ) {
-            Box(
-                Modifier
-                    .padding(bottom = Dimens.SpaceS)
-                    .size(Dimens.GrabberWidth, Dimens.GrabberHeight)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.outline)
-            )
             Text(
                 title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        CircleButton("◐", stringResource(R.string.adjust_window), onToggleAdjust)
-        CircleButton("–", stringResource(R.string.minimise), onMinimise)
-        CircleButton("✕", stringResource(R.string.close_floating), onClose)
+        CircleButton("◐", stringResource(R.string.adjust_window), onToggleAdjust, dense = true)
+        CircleButton("–", stringResource(R.string.minimise), onMinimise, dense = true)
+        CircleButton("✕", stringResource(R.string.close_floating), onClose, dense = true)
     }
 }
 
@@ -275,6 +283,7 @@ private fun SizeRow(current: PanelSize?, onSize: (PanelSize) -> Unit) {
                 ),
                 onClick = { onSize(size) },
                 selected = size == current,
+                dense = true,
             )
         }
     }

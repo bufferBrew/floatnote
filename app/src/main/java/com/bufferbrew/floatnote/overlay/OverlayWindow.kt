@@ -33,7 +33,11 @@ enum class OverlayMode { Panel, Bubble }
  *
  * The panel is focusable while you're using it (so the keyboard works, including Wispr Flow)
  * and gives focus back to the app underneath when you touch outside it. The bubble is never
- * focusable. Opacity is the window's own alpha, so it applies to everything drawn in it.
+ * focusable.
+ *
+ * Opacity fades what's drawn (a graphics layer), never the window: Android drops every touch
+ * on a window whose own alpha is below its threshold ("Not sending motion … window opacity
+ * below the threshold"), which made a faded panel completely unresponsive.
  */
 class OverlayWindow(
     private val context: Context,
@@ -128,6 +132,8 @@ class OverlayWindow(
     }
 
     fun destroy() {
+        // Closing the floating note ends any recording and sends it.
+        voice.stop()
         session.flush()
         if (attached) windowManager.removeView(root)
         attached = false
@@ -138,10 +144,12 @@ class OverlayWindow(
     private fun OverlayContent() {
         // Here rather than in the panel, so minimising to the bubble keeps the recording going.
         AutoRecordEffect(session.note?.id)
+        // Content alpha, not window alpha: see the class comment.
         FloatNoteTheme {
             when (mode) {
                 OverlayMode.Bubble -> OverlayBubble(
-                    voiceState = voice.state,
+                    voiceState = { voice.state },
+                    opacity = opacity,
                     onTap = ::expand,
                     onDragStart = { dragOrigin = bubble },
                     onDrag = { dx, dy -> moveBubble(dx, dy) },
@@ -149,7 +157,7 @@ class OverlayWindow(
                 )
                 OverlayMode.Panel -> OverlayPanel(
                     session = session,
-                    voiceState = voice.state,
+                    voiceState = { voice.state },
                     voiceActions = voiceActions,
                     opacity = opacity,
                     panelSize = panelPreset,
@@ -177,7 +185,6 @@ class OverlayWindow(
 
     private fun changeOpacity(value: Float) {
         opacity = value.coerceIn(OverlayPrefs.MIN_OPACITY, 1f)
-        update()
     }
 
     /** Where the window was when the current drag began; drags are offsets from here. */
@@ -220,7 +227,6 @@ class OverlayWindow(
         params.y = rect.y
         params.width = rect.width
         params.height = rect.height
-        params.alpha = opacity
         val canFocus = mode == OverlayMode.Panel && focusable
         params.flags = if (canFocus) {
             params.flags and FLAG_NOT_FOCUSABLE.inv()
@@ -272,9 +278,9 @@ class OverlayWindow(
 
     private companion object {
         val DEFAULT_SIZE = PanelSize.Small
-        const val MIN_PANEL_WIDTH_DP = 220
-        const val MIN_PANEL_HEIGHT_DP = 200
-        const val BUBBLE_WIDTH_DP = 64
-        const val BUBBLE_HEIGHT_DP = 36
+        const val MIN_PANEL_WIDTH_DP = 180
+        const val MIN_PANEL_HEIGHT_DP = 160
+        const val BUBBLE_WIDTH_DP = 56
+        const val BUBBLE_HEIGHT_DP = 30
     }
 }

@@ -79,11 +79,15 @@ object Dimens {
     val TouchTarget = 48.dp
     val ChipHeight = 36.dp
     val HeaderButton = 32.dp
+    // Floating panel: slimmer chrome than the full app.
+    val CompactTouchTarget = 36.dp
+    val CompactButton = 28.dp
+    val CompactChipHeight = 30.dp
     val GrabberWidth = 36.dp
     val GrabberHeight = 4.dp
     val WaveBarWidth = 3.dp
     val WaveMaxHeight = 24.dp
-    val BubbleWaveMaxHeight = 22.dp
+    val BubbleWaveMaxHeight = 18.dp
 }
 
 @Composable

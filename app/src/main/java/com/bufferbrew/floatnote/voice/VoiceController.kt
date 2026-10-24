@@ -50,7 +50,8 @@ class VoiceController(
     private val scope: CoroutineScope,
     private val onTranscript: (noteId: String, text: String) -> Unit,
     private val clock: () -> Long = System::currentTimeMillis,
-    private val sampleIntervalMs: Long = 80,
+    /** ~10 waveform updates a second: smooth enough, and cheap to draw in the overlay. */
+    private val sampleIntervalMs: Long = 100,
     private val maxDurationMs: Long = 10 * 60 * 1000,
     /** How long stop waits for the device recognizer's last sentence before giving up. */
     private val finishTimeoutMs: Long = 3_000,
@@ -289,7 +290,7 @@ class VoiceController(
     }
 
     companion object {
-        /** Samples kept for the waveform; ~2 s at the default rate. */
+        /** Samples kept for the waveform; ~2.4 s at the default rate. */
         const val MAX_LEVELS = 24
     }
 }

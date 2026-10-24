@@ -4,7 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +26,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -39,6 +42,7 @@ import com.bufferbrew.floatnote.FloatNoteApp
 import com.bufferbrew.floatnote.MainActivity
 import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.ui.theme.Dimens
+import kotlin.math.sqrt
 
 /** What the editor's voice controls can ask for. */
 interface VoiceActions {
@@ -104,9 +108,11 @@ fun AutoRecordEffect(noteId: String?) {
             app.voice.start(noteId)
         }
     }
-    // Leaving the note (or closing this host) ends the clip and sends it to that note.
+    // Leaving the note (back to the list, or another note) ends the clip and sends it. A host
+    // merely going away doesn't: the other host may still be showing this note and recording.
+    // Hosts handle their own exit (MainActivity.onStop, OverlayWindow.destroy).
     DisposableEffect(noteId) {
-        onDispose { if (noteId != null) app.voice.stop() }
+        onDispose { if (noteId != null && app.session.note?.id != noteId) app.voice.stop() }
     }
 }
 
@@ -115,7 +121,8 @@ fun AutoRecordEffect(noteId: String?) {
  * transcribing, and errors with what to do next. Nothing when idle.
  */
 @Composable
-fun VoiceStatus(state: VoiceState, actions: VoiceActions, modifier: Modifier = Modifier) {
+fun VoiceStatus(voiceState: () -> VoiceState, actions: VoiceActions, modifier: Modifier = Modifier) {
+    val state = voiceState()
     if (state == VoiceState.Idle) return
     val colors = MaterialTheme.colorScheme
     Column(
@@ -183,6 +190,10 @@ fun VoiceStatus(state: VoiceState, actions: VoiceActions, modifier: Modifier = M
 /**
  * Bars that follow recent loudness, newest on the right. Missing samples (just started)
  * show as the quietest bar, so the shape grows in from the right.
+ *
+ * Drawn in one Canvas pass with no per-bar animation: it only redraws when a new sample
+ * arrives (~10×/s). Animating each bar kept the overlay rendering at 60 fps and cost ~40% of a
+ * CPU core while listening, which made the floating panel sluggish.
  */
 @Composable
 fun Waveform(
@@ -193,29 +204,27 @@ fun Waveform(
     bars: Int = VoiceController.MAX_LEVELS,
 ) {
     val label = stringResource(R.string.voice_waveform)
-    Row(
-        modifier = modifier.height(maxHeight).semantics { contentDescription = label },
-        horizontalArrangement = Arrangement.spacedBy(Dimens.WaveBarWidth),
-        verticalAlignment = Alignment.CenterVertically,
+    val barWidth = Dimens.WaveBarWidth
+    Canvas(
+        modifier = modifier
+            .width(barWidth * (2 * bars - 1))
+            .height(maxHeight)
+            .semantics { contentDescription = label },
     ) {
+        val w = barWidth.toPx()
+        val minH = w
         val padded = List((bars - levels.size).coerceAtLeast(0)) { 0f } + levels.takeLast(bars)
-        padded.forEach { level -> WaveBar(level, color, maxHeight) }
+        padded.forEachIndexed { i, level ->
+            // Speech amplitudes are mostly small; a square root lifts quiet talking into view.
+            val h = minH + (size.height - minH) * sqrt(level.coerceIn(0f, 1f))
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(i * 2 * w, (size.height - h) / 2),
+                size = Size(w, h),
+                cornerRadius = CornerRadius(w / 2, w / 2),
+            )
+        }
     }
-}
-
-@Composable
-fun WaveBar(level: Float, color: Color, maxHeight: Dp) {
-    val minHeight = Dimens.WaveBarWidth
-    // Speech amplitudes are mostly small; a square root lifts quiet talking into view.
-    val target = minHeight + (maxHeight - minHeight) * kotlin.math.sqrt(level.coerceIn(0f, 1f))
-    val height by animateDpAsState(target, label = "waveBar")
-    Box(
-        Modifier
-            .width(Dimens.WaveBarWidth)
-            .height(height)
-            .clip(CircleShape)
-            .background(color)
-    )
 }
 
 private fun formatElapsed(ms: Long): String {

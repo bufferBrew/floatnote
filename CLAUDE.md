@@ -76,8 +76,9 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   - `VoiceController`: record → transcribe → `session.addTranscript(noteId, text)`. One per
     process (`FloatNoteApp.voice`), so bubble and editor share state. Keeps audio on failure for Retry.
   - Two engines (`VoiceEngine`, chosen in Settings): Whisper (record, then upload) and Device
-    (`AndroidLiveRecognizer`: Android's SpeechRecognizer, on-device first, restarted after each
-    sentence for continuous dictation; sentences land in the note as they're heard).
+    (`AndroidLiveRecognizer`: the phone's default recognition service first, the "on-device"
+    recognizer API only as fallback; switches if one hears speech but returns empty text;
+    restarted after each pause for continuous dictation; sentences land in the note as heard).
   - `MediaAudioRecorder` (16 kHz mono AAC .m4a, live level), `WhisperClient` (OpenAI-compatible
     `/audio/transcriptions`, works with OpenAI or Groq), `VoiceSettings` (key encrypted with a
     Keystore AES-GCM key; base URL, model, language, auto-record).
@@ -116,6 +117,14 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - The `<queries>` entry for `android.speech.RecognitionService` is required: without it,
   Android 11+ hides the recognizer and `SpeechRecognizer.isRecognitionAvailable` returns false.
 - QS tile on Android 14+: use `startActivityAndCollapse(PendingIntent)`.
+- **Never set `LayoutParams.alpha` on the overlay.** Android drops every touch on a window whose
+  alpha is below its threshold ("Not sending motion … window opacity below the threshold"), so a
+  faded panel goes dead. Fade the content with `graphicsLayer { alpha = … }` instead.
+- Don't read fast-changing state (voice levels, ~10×/s) high in the overlay tree: pass it as a
+  lambda and read it in the leaf that draws it, or the whole panel recomposes. The waveform is a
+  single Canvas with no per-bar animation; animating bars kept it at 60 fps and ~50% CPU.
+- `uiautomator dump` returns nothing while the overlay is animating (it waits for idle). Locate
+  controls from the window frame (`dumpsys input`) and the layout instead.
 - Overlay windows need `FLAG_LAYOUT_IN_SCREEN` (+ cutout mode ALWAYS on API 30+). Without it
   Android offsets them below the status bar, so x/y aren't screen coordinates. Clamp to
   `usableArea()` (screen minus system bars and cutout), not the raw screen size.

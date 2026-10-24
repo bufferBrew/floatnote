@@ -119,7 +119,7 @@ class MainActivity : ComponentActivity() {
                                     note = note,
                                     pendingFocus = session.pendingFocus,
                                     actions = session,
-                                    voiceState = app.voice.state,
+                                    voiceState = { app.voice.state },
                                     voiceActions = voiceActions,
                                     modifier = Modifier.weight(1f),
                                 )
