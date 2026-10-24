@@ -32,7 +32,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -163,7 +165,10 @@ fun VoiceStatus(voiceState: () -> VoiceState, actions: VoiceActions, modifier: M
                     )
                 }
             }
-            VoiceState.Transcribing -> Row(verticalAlignment = Alignment.CenterVertically) {
+            VoiceState.Transcribing -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            ) {
                 Text(
                     stringResource(R.string.voice_transcribing),
                     style = MaterialTheme.typography.labelMedium,
@@ -174,7 +179,11 @@ fun VoiceStatus(voiceState: () -> VoiceState, actions: VoiceActions, modifier: M
                 TextButton(onClick = actions::onCancel) { Text(stringResource(R.string.cancel)) }
             }
             is VoiceState.Error -> {
-                Text(state.message, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    state.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
+                )
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     if (state.needsSettings) {
                         TextButton(onClick = actions::onOpenSettings) { Text(stringResource(R.string.settings)) }

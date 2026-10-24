@@ -8,6 +8,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import androidx.annotation.StringRes
+import com.bufferbrew.floatnote.R
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -54,12 +56,12 @@ interface LiveRecognizer {
  * EXTRA_PREFER_OFFLINE). The "on-device" recognizer API is only the fallback: on a Galaxy S25
  * Ultra it runs Google's offline engine in an ambient one-shot mode that hears speech but
  * returns empty transcripts. Whichever is in use, if it hears speech yet returns nothing
- * [EMPTY_SWITCH] times in a row, we switch to the other for the rest of the session.
+ * [RecognizerPolicy.EMPTY_SWITCH] times in a row, we switch to the other for the rest of the session.
  *
  * Restarts reuse the same [SpeechRecognizer] and are posted a moment later. Destroying and
  * recreating it straight from a callback races the recognition service's own shutdown and
  * fails with ERROR_SERVER_DISCONNECTED (seen on a Galaxy S25 Ultra with Google's offline
- * recognizer). If the service does drop, it's rebuilt, up to [MAX_RECONNECTS] times in a row.
+ * recognizer). If the service does drop, it's rebuilt, up to [RecognizerPolicy.MAX_RECONNECTS] times in a row.
  */
 class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
     private val handler = Handler(Looper.getMainLooper())
@@ -79,18 +81,16 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
             if (!active) return
             if (SystemClock.elapsedRealtime() - lastHeardAt > WATCHDOG_MS) {
                 Log.w(TAG, "speech service went silent; reconnecting")
-                if (stopping) {
-                    finish()
-                    return
+                when (val action = RecognizerPolicy.onSilentService(stopping, reconnects)) {
+                    RecognizerPolicy.Action.Finish -> return finish()
+                    is RecognizerPolicy.Action.Fail -> return fail(action.message)
+                    else -> {
+                        reconnects++
+                        lastHeardAt = SystemClock.elapsedRealtime()
+                        rebuild()
+                        startListening()
+                    }
                 }
-                if (reconnects >= MAX_RECONNECTS) {
-                    fail("The phone's speech service stopped responding. Try again, or switch to Whisper in Settings.")
-                    return
-                }
-                reconnects++
-                lastHeardAt = SystemClock.elapsedRealtime()
-                rebuild()
-                startListening()
             }
             handler.postDelayed(this, WATCHDOG_CHECK_MS)
         }
@@ -179,9 +179,9 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
 
     /** The current recognizer keeps hearing speech but returning nothing: try the other one. */
     private fun noteEmptyResult() {
-        if (!heardSpeech) return
-        emptyAfterSpeech++
-        if (emptyAfterSpeech < EMPTY_SWITCH) return
+        val (count, switch) = RecognizerPolicy.afterEmptyResult(heardSpeech, emptyAfterSpeech)
+        emptyAfterSpeech = count
+        if (!switch) return
         val other = !usingOnDevice
         val otherAvailable = if (other) onDeviceAvailable() else SpeechRecognizer.isRecognitionAvailable(context)
         if (!otherAvailable) return
@@ -247,36 +247,22 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
         override fun onError(error: Int) {
             lastHeardAt = SystemClock.elapsedRealtime()
             Log.d(TAG, "recognizer error $error (onDevice=$usingOnDevice, stopping=$stopping)")
-            when (error) {
-                // Silence or nothing understood: not a failure in dictation, just keep listening.
-                SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+            when (val action = RecognizerPolicy.onError(error, usingOnDevice, stopping, reconnects)) {
+                RecognizerPolicy.Action.KeepListening -> {
                     noteEmptyResult()
                     continueOrFinish()
                 }
-                SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
-                    if (usingOnDevice) {
-                        // No offline model for this language: use the phone's regular service.
-                        usingOnDevice = false
-                        if (active && !stopping) restartSoon(rebuildFirst = true) else finish()
-                    } else {
-                        fail("Speech recognition doesn't support this language. Try clearing Language in Settings.")
-                    }
-                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> fail("FloatNote needs microphone access.")
-                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> fail("The speech recognizer is busy in another app.")
-                SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER ->
-                    fail("Speech recognition needs a connection on this phone for this language.")
-                // The service went away under us: reconnect, but don't loop forever.
-                SpeechRecognizer.ERROR_SERVER_DISCONNECTED, SpeechRecognizer.ERROR_CLIENT ->
-                    when {
-                        stopping -> finish()
-                        reconnects < MAX_RECONNECTS -> {
-                            reconnects++
-                            restartSoon(rebuildFirst = true)
-                        }
-                        else -> fail("The phone's speech service keeps disconnecting. Try again, or switch to Whisper in Settings.")
-                    }
-                SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> fail("The phone's speech service is rate-limiting. Try again in a moment.")
-                else -> fail("Speech recognition failed (error $error).")
+                RecognizerPolicy.Action.UseDefaultService -> {
+                    usingOnDevice = false
+                    if (active && !stopping) restartSoon(rebuildFirst = true) else finish()
+                }
+                RecognizerPolicy.Action.Reconnect -> {
+                    reconnects++
+                    restartSoon(rebuildFirst = true)
+                }
+                RecognizerPolicy.Action.Finish -> finish()
+                is RecognizerPolicy.Action.Fail ->
+                    if (action.code != null) fail(action.message, action.code) else fail(action.message)
             }
         }
 
@@ -292,7 +278,8 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
     }
 
-    private fun fail(message: String) {
+    private fun fail(@StringRes id: Int, vararg args: Any) {
+        val message = context.getString(id, *args)
         Log.w(TAG, "Speech recognition failed: $message")
         val l = listener
         cancel()
@@ -305,8 +292,6 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
     private companion object {
         const val TAG = "FloatNoteVoice"
         const val RESTART_DELAY_MS = 150L
-        const val MAX_RECONNECTS = 3
-        const val EMPTY_SWITCH = 2
         const val WATCHDOG_MS = 8_000L
         const val WATCHDOG_CHECK_MS = 2_000L
     }

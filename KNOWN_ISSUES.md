@@ -150,3 +150,29 @@
   - Tune the thresholds from real recordings, or expose them as a setting.
   - Move to a soft-delete column (Room v3 + migration test) if the in-memory Undo isn't enough.
 - Status: open (needs a device check)
+
+## 2026-10-24 — Backlog P2/P3 items, Settings pages, Dictionary page
+- What changed / what shortcut was taken:
+  - Settings is now a menu of pages (Voice, API key and server, AI, Floating note, Backup).
+    Dictionary and History are pages of their own beside the notes, in the app and the floating panel.
+  - New: search, pinning (Room v3, auto-migration, tested), JSON export/import, undo/redo, and
+    Backspace on an empty line. Device dictation joins into one paragraph per recording.
+  - Also: string resources for errors, `RecognizerPolicy`, window context, contrast and TalkBack
+    fixes, CI workflow, privacy docs, History "Use what was heard".
+  - 128 unit tests pass. **Not run on a device.**
+- Ceiling (when this breaks):
+  - Undo history is in memory and per open note (lost on close), capped at 100 steps; quick
+    typing in one line within 1.5 s is one step.
+  - Backspace-to-remove depends on the keyboard sending a key event for an empty field; most do
+    (Gboard, Samsung), some may not.
+  - Importing creates new notes every time, so importing the same file twice duplicates.
+  - "Use what was heard" swaps the newest matching text in the note; if you edited that sentence
+    since, nothing happens.
+  - Search uses LIKE over every block, which is fine for thousands of notes; FTS would be needed
+    beyond that.
+  - CI compiles against SDK 37, which the runner downloads; not yet run on GitHub.
+- Upgrade trigger (what to do when it's hit):
+  - Room FTS4 if search gets slow.
+  - Persist undo per note if people want it after reopening.
+  - Organise preview (#33).
+- Status: open (needs a device check)

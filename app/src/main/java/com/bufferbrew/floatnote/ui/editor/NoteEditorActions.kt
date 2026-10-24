@@ -15,6 +15,9 @@ interface NoteEditorActions {
     fun onFocusChanged(blockId: String, focused: Boolean)
     fun onFocusConsumed()
 
+    fun onUndo()
+    fun onRedo()
+
     /** AI: restructure the open note. */
     fun onOrganise()
     fun onUndoOrganise()

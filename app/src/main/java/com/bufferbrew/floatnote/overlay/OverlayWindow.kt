@@ -68,7 +68,7 @@ class OverlayWindow(
 
     init {
         panelPreset = PanelSize.entries.firstOrNull {
-            dp(it.widthDp) == panel.width && dp(it.heightDp) == panel.height
+            preset(it.widthDp) == panel.width && preset(it.heightDp) == panel.height
         }
     }
 
@@ -177,7 +177,7 @@ class OverlayWindow(
 
     /** Keeps the top-left corner where it is (pulled back on screen if needed). */
     private fun applyPanelSize(size: PanelSize) {
-        panel = panel.copy(width = dp(size.widthDp), height = dp(size.heightDp)).clampedTo(usableArea())
+        panel = panel.copy(width = preset(size.widthDp), height = preset(size.heightDp)).clampedTo(usableArea())
         panelPreset = size
         prefs.panel = panel
         update()
@@ -227,6 +227,13 @@ class OverlayWindow(
         params.y = rect.y
         params.width = rect.width
         params.height = rect.height
+        // Only the panel needs to hear about outside touches (to hand focus back). For the bubble
+        // it would wake the app on every touch anywhere on screen.
+        params.flags = if (mode == OverlayMode.Panel) {
+            params.flags or FLAG_WATCH_OUTSIDE_TOUCH
+        } else {
+            params.flags and FLAG_WATCH_OUTSIDE_TOUCH.inv()
+        }
         val canFocus = mode == OverlayMode.Panel && focusable
         params.flags = if (canFocus) {
             params.flags and FLAG_NOT_FOCUSABLE.inv()
@@ -241,8 +248,8 @@ class OverlayWindow(
      */
     private fun defaultPanel(): WindowRect {
         val area = usableArea()
-        val width = dp(DEFAULT_SIZE.widthDp)
-        val height = dp(DEFAULT_SIZE.heightDp)
+        val width = preset(DEFAULT_SIZE.widthDp)
+        val height = preset(DEFAULT_SIZE.heightDp)
         val top = area.y + (area.height * 0.08f).toInt()
         // Top right, small: out of the way of whatever app is underneath.
         return WindowRect(area.right - width - dp(12), top, width, height)
@@ -272,12 +279,20 @@ class OverlayWindow(
         return WindowRect(0, 0, metrics.widthPixels, metrics.heightPixels)
     }
 
+    /**
+     * Preset sizes grow with the system font size (up to 1.5×), so S/M/L still fit their
+     * title and chips at large text. The window is still clamped to the screen.
+     */
+    private fun preset(valueDp: Int): Int =
+        (dp(valueDp) * context.resources.configuration.fontScale.coerceIn(1f, MAX_PRESET_SCALE)).toInt()
+
     private fun dp(value: Int): Int = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), context.resources.displayMetrics,
     ).toInt()
 
     private companion object {
         val DEFAULT_SIZE = PanelSize.Small
+        const val MAX_PRESET_SCALE = 1.5f
         const val MIN_PANEL_WIDTH_DP = 180
         const val MIN_PANEL_HEIGHT_DP = 160
         const val BUBBLE_WIDTH_DP = 56

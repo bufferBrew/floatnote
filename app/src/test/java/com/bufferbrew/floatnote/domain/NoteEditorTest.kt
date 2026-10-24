@@ -170,4 +170,25 @@ class NoteEditorTest {
         assertSame(start, editor.toggle(start, "missing"))
         assertSame(start, editor.updateText(start, "missing", "x"))
     }
+
+    @Test
+    fun `continueTranscript joins the last text block, else starts a new one`() {
+        val base = Note("n", blocks = listOf(Block.Text("t", "First sentence.")))
+        val joined = editor.continueTranscript(base, "t", " Second one. ")
+        assertEquals(listOf(Block.Text("t", "First sentence. Second one.")), joined.blocks)
+
+        val withTask = base.copy(blocks = base.blocks + Block.Task("k", "todo"))
+        val split = editor.continueTranscript(withTask, "t", "More")
+        assertEquals(3, split.blocks.size)
+        assertEquals("More", split.blocks.last().text)
+        assertSame(base, editor.continueTranscript(base, "t", "  "))
+    }
+
+    @Test
+    fun `replaceLast swaps the newest occurrence only`() {
+        val base = Note("n", blocks = listOf(Block.Text("a", "Hi."), Block.Text("b", "Hi. Bye.")))
+        val swapped = editor.replaceLast(base, "Hi.", "hi um")
+        assertEquals(listOf("Hi.", "hi um Bye."), swapped.blocks.map { it.text })
+        assertSame(base, editor.replaceLast(base, "missing", "x"))
+    }
 }

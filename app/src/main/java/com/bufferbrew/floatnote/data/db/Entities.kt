@@ -1,5 +1,6 @@
 package com.bufferbrew.floatnote.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -12,6 +13,8 @@ data class NoteEntity(
     /** [com.bufferbrew.floatnote.domain.model.TaskCompletionMode] name. */
     val taskMode: String,
     val updatedAt: Long,
+    /** Pinned notes list first. Added in version 3. */
+    @ColumnInfo(defaultValue = "0") val pinned: Boolean = false,
 )
 
 @Entity(
@@ -43,6 +46,7 @@ data class NoteSummaryRow(
     val title: String,
     val updatedAt: Long,
     val preview: String,
+    val pinned: Boolean,
 )
 
 /**

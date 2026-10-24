@@ -13,6 +13,7 @@ fun Note.toEntity(updatedAt: Long) = NoteEntity(
     title = title,
     taskMode = taskMode.name,
     updatedAt = updatedAt,
+    pinned = pinned,
 )
 
 fun Note.toBlockEntities(): List<BlockEntity> = blocks.mapIndexed { position, block ->
@@ -37,6 +38,7 @@ fun NoteEntity.toDomain(blocks: List<BlockEntity>) = Note(
     blocks = blocks.sortedBy { it.position }.map { it.toDomain() },
     taskMode = TaskCompletionMode.entries.firstOrNull { it.name == taskMode }
         ?: TaskCompletionMode.MoveToBottom,
+    pinned = pinned,
 )
 
 private fun BlockEntity.toDomain(): Block =

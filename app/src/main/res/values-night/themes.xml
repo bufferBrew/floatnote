@@ -1,0 +1,4 @@
+<resources>
+    <!-- Dark mode: a dark window from the first frame, so there's no white flash before Compose draws. -->
+    <style name="Theme.FloatNote" parent="android:Theme.Material.NoActionBar" />
+</resources>

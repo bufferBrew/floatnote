@@ -1,6 +1,8 @@
 package com.bufferbrew.floatnote.voice
 
+import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.net.await
+import com.bufferbrew.floatnote.util.Strings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -28,6 +30,7 @@ class TranscriptionException(message: String, cause: Throwable? = null) : IOExce
  * self-hosted server). The key goes in the Authorization header only.
  */
 class WhisperClient(
+    private val strings: Strings,
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -49,7 +52,7 @@ class WhisperClient(
             .build()
         // A mistyped server address (no https://) would otherwise throw from url() and crash.
         val url = (config.baseUrl.trimEnd('/') + "/audio/transcriptions").toHttpUrlOrNull()
-            ?: throw TranscriptionException("The server address in Settings isn't a valid URL. It should start with https://")
+            ?: throw TranscriptionException(strings.get(R.string.err_invalid_url))
         val request = Request.Builder()
             .url(url)
             .header("Authorization", "Bearer ${config.apiKey}")
@@ -59,8 +62,9 @@ class WhisperClient(
         val response = try {
             http.newCall(request).await()
         } catch (e: IOException) {
-            val reason = if (e is InterruptedIOException) "The transcription service took too long." else
-                "Couldn't reach the transcription service. Check your connection."
+            val reason = strings.get(
+                if (e is InterruptedIOException) R.string.err_whisper_slow else R.string.err_whisper_unreachable
+            )
             throw TranscriptionException(reason, e)
         }
         return withContext(Dispatchers.IO) {
@@ -68,7 +72,7 @@ class WhisperClient(
                 val text = it.body?.string().orEmpty()
                 if (!it.isSuccessful) throw TranscriptionException(errorMessage(it.code, text))
                 runCatching { JSONObject(text).getString("text").trim() }
-                    .getOrElse { e -> throw TranscriptionException("Unexpected reply from the transcription service.", e) }
+                    .getOrElse { e -> throw TranscriptionException(strings.get(R.string.err_whisper_bad_reply), e) }
             }
         }
     }
@@ -76,13 +80,13 @@ class WhisperClient(
     private fun errorMessage(code: Int, body: String): String {
         val detail = runCatching { JSONObject(body).getJSONObject("error").getString("message") }.getOrNull()
         val reason = when (code) {
-            401 -> "The API key was rejected. Check it in Settings."
-            404 -> "Transcription endpoint not found. Check the server address and model in Settings."
-            413 -> "The recording is too long to upload."
-            429 -> "Rate limit or quota reached on your API account."
-            else -> "Transcription failed (HTTP $code)."
+            401 -> strings.get(R.string.err_key_rejected)
+            404 -> strings.get(R.string.err_whisper_404)
+            413 -> strings.get(R.string.err_too_long)
+            429 -> strings.get(R.string.err_rate_limit)
+            else -> strings.get(R.string.err_whisper_http, code)
         }
-        return if (detail != null && code != 401) "$reason $detail" else reason
+        return if (detail != null && code != 401) strings.get(R.string.err_with_detail, reason, detail) else reason
     }
 
     private companion object {

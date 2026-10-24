@@ -35,8 +35,14 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -51,9 +57,6 @@ import com.bufferbrew.floatnote.ui.theme.Dimens
 import com.bufferbrew.floatnote.voice.VoiceActions
 import com.bufferbrew.floatnote.voice.VoiceState
 import com.bufferbrew.floatnote.voice.VoiceStatus
-
-/** Alpha for completed tasks, which stay readable but recede. */
-private const val DoneAlpha = 0.5f
 
 /**
  * The note editor. Stateless and host-agnostic: the Activity and the floating overlay both
@@ -70,6 +73,8 @@ fun NoteEditorContent(
     compact: Boolean = false,
     assist: AssistState = AssistState.Idle,
     onShare: (() -> Unit)? = null,
+    canUndo: Boolean = false,
+    canRedo: Boolean = false,
 ) {
     // Read voice state only where it's drawn: it changes ~12×/s while listening, and reading it
     // here would redraw the whole editor that often.
@@ -140,6 +145,8 @@ fun NoteEditorContent(
             organising = assist == AssistState.Working,
             onMic = voiceActions::onMicToggle,
             onShare = onShare,
+            canUndo = canUndo,
+            canRedo = canRedo,
             dense = compact,
         )
     }
@@ -168,7 +175,8 @@ private fun BlockRow(
         is Block.Checklist ->
             if (block.checked) baseStyle.copy(textDecoration = TextDecoration.LineThrough) else baseStyle
         is Block.Task ->
-            if (block.done) baseStyle.copy(color = MaterialTheme.colorScheme.onSurface.copy(alpha = DoneAlpha))
+            // Secondary ink (about 5:1), not 50% alpha (about 3.5:1): done, but still readable.
+            if (block.done) baseStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
             else baseStyle
     }
 
@@ -195,6 +203,16 @@ private fun BlockRow(
             modifier = Modifier
                 .weight(1f)
                 .focusRequester(focusRequester)
+                // Backspace on an empty line removes it and moves up, as in Keep. Keyboards send a
+                // Backspace key event when there's nothing left to delete.
+                .onPreviewKeyEvent {
+                    if (it.type == KeyEventType.KeyDown && it.key == Key.Backspace && block.text.isEmpty()) {
+                        actions.onRemove(block.id)
+                        true
+                    } else {
+                        false
+                    }
+                }
                 .onFocusChanged {
                     focused = it.isFocused
                     actions.onFocusChanged(block.id, it.isFocused)
@@ -205,7 +223,7 @@ private fun BlockRow(
             IconButton(
                 onClick = { actions.onRemove(block.id) },
                 modifier = Modifier.semantics { contentDescription = label },
-            ) { Text("✕") }
+            ) { Text("✕", modifier = Modifier.clearAndSetSemantics {}) }
         }
     }
 }
@@ -245,6 +263,8 @@ private fun EditorToolbar(
     organising: Boolean,
     onMic: () -> Unit,
     onShare: (() -> Unit)?,
+    canUndo: Boolean,
+    canRedo: Boolean,
     dense: Boolean,
 ) {
     // Scrolls sideways so it fits a narrow floating window.
@@ -262,6 +282,8 @@ private fun EditorToolbar(
             selected = recording,
             dense = dense,
         )
+        if (canUndo) PillButton(stringResource(R.string.edit_undo), actions::onUndo, dense = dense)
+        if (canRedo) PillButton(stringResource(R.string.edit_redo), actions::onRedo, dense = dense)
         PillButton(
             text = stringResource(if (organising) R.string.ai_organising else R.string.ai_organise),
             onClick = actions::onOrganise,

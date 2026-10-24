@@ -1,5 +1,7 @@
 package com.bufferbrew.floatnote.ui.settings
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -18,279 +21,315 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.bufferbrew.floatnote.R
-import com.bufferbrew.floatnote.domain.model.VocabEntry
 import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.theme.Dimens
 import com.bufferbrew.floatnote.voice.VoiceEngine
 import com.bufferbrew.floatnote.voice.VoiceSettings
 
+/** The Settings pages. Dictionary and History are pages of their own beside the notes. */
+enum class SettingsPage { Voice, Api, Ai, Floating, Backup }
+
 /**
- * Voice settings. Text fields save as you type, except the API key, which is only written
- * when you tap Save and is never shown back (the field starts empty).
+ * Settings: a short menu of categories, each opening its own page. Text fields save as you
+ * type, except the API key, which is only written when you tap Save and is never shown back
+ * (the field starts empty).
  */
 @Composable
 fun SettingsContent(
     settings: VoiceSettings,
     micGranted: Boolean,
     onRequestMic: () -> Unit,
-    vocabulary: List<VocabEntry>,
-    onAddVocab: (term: String, replacement: String) -> Unit,
-    onDeleteVocab: (Long) -> Unit,
     openNewNote: Boolean,
     onOpenNewNoteChange: (Boolean) -> Unit,
+    onExport: () -> Unit,
+    onImport: () -> Unit,
+    /** Result of the last export or import, shown on the Backup page. */
+    backupMessage: String?,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var autoRecord by remember { mutableStateOf(settings.autoRecord) }
-    var engine by remember { mutableStateOf(settings.engine) }
-    var hasKey by remember { mutableStateOf(settings.hasApiKey) }
-    var keyDraft by remember { mutableStateOf("") }
-    var baseUrl by remember { mutableStateOf(settings.baseUrl) }
-    var model by remember { mutableStateOf(settings.model) }
-    var language by remember { mutableStateOf(settings.language) }
-    var hostConfirmed by remember { mutableIntStateOf(0) }
-    var aiCleanup by remember { mutableStateOf(settings.aiCleanup) }
-    var aiModel by remember { mutableStateOf(settings.aiModel) }
+    var page by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
     val colors = MaterialTheme.colorScheme
+    // Registered after the host's handler, so Back leaves the page before it leaves Settings.
+    BackHandler(enabled = page != null) { page = null }
 
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Dimens.SpaceM),
     ) {
-        TextButton(onClick = onBack) {
-            Text(stringResource(R.string.back_to_notes), color = colors.onSurfaceVariant)
-        }
-        Text(stringResource(R.string.settings_voice), style = MaterialTheme.typography.headlineSmall)
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.settings_auto_record), modifier = Modifier.weight(1f))
-            Switch(
-                checked = autoRecord,
-                onCheckedChange = {
-                    autoRecord = it
-                    settings.autoRecord = it
-                },
-            )
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.settings_float_new_note))
-                Text(
-                    stringResource(R.string.settings_float_new_note_help),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                )
-            }
-            Switch(checked = openNewNote, onCheckedChange = onOpenNewNoteChange)
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.settings_mic), modifier = Modifier.weight(1f))
-            if (micGranted) {
-                Text(stringResource(R.string.settings_mic_granted), color = colors.onSurfaceVariant)
-            } else {
-                PillButton(stringResource(R.string.settings_mic_allow), onRequestMic, selected = true)
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
-            Text(stringResource(R.string.settings_engine))
-            Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
-                VoiceEngine.entries.forEach { option ->
-                    PillButton(
-                        text = stringResource(
-                            if (option == VoiceEngine.Device) R.string.engine_device else R.string.engine_whisper
-                        ),
-                        onClick = {
-                            engine = option
-                            settings.engine = option
-                        },
-                        selected = engine == option,
-                    )
-                }
-            }
+        val current = page
+        TextButton(onClick = { if (current == null) onBack() else page = null }) {
             Text(
-                stringResource(
-                    if (engine == VoiceEngine.Device) R.string.engine_device_help else R.string.engine_whisper_help
-                ),
-                style = MaterialTheme.typography.bodySmall,
+                stringResource(if (current == null) R.string.back_to_notes else R.string.back_to_settings),
                 color = colors.onSurfaceVariant,
             )
         }
-
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
-            OutlinedTextField(
-                value = keyDraft,
-                onValueChange = { keyDraft = it },
-                label = { Text(stringResource(R.string.settings_api_key)) },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                stringResource(if (hasKey) R.string.settings_api_key_saved else R.string.settings_api_key_missing),
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
-                PillButton(
-                    text = stringResource(R.string.settings_save_key),
-                    onClick = {
-                        if (keyDraft.isNotBlank()) {
-                            settings.setApiKey(keyDraft)
-                            keyDraft = ""
-                            hasKey = true
-                        }
-                    },
-                    selected = keyDraft.isNotBlank(),
-                )
-                if (hasKey) {
-                    PillButton(
-                        text = stringResource(R.string.settings_remove_key),
-                        onClick = {
-                            settings.setApiKey("")
-                            hasKey = false
-                        },
-                    )
-                }
-            }
+        when (current) {
+            null -> SettingsMenu(onOpen = { page = it })
+            SettingsPage.Voice -> VoicePage(settings, micGranted, onRequestMic)
+            SettingsPage.Api -> ApiPage(settings)
+            SettingsPage.Ai -> AiPage(settings)
+            SettingsPage.Floating -> FloatingPage(openNewNote, onOpenNewNoteChange)
+            SettingsPage.Backup -> BackupPage(onExport, onImport, backupMessage)
         }
-
-        SettingField(
-            value = baseUrl,
-            onChange = { baseUrl = it; settings.baseUrl = it },
-            label = stringResource(R.string.settings_base_url),
-            help = stringResource(R.string.settings_base_url_help),
-            keyboardType = KeyboardType.Uri,
-        )
-        // Re-read on every change of address or key; hostConfirmed bumps it after Allow.
-        val urlValid = remember(baseUrl) { settings.baseUrlValid }
-        val needsConfirm = remember(baseUrl, hasKey, hostConfirmed) { settings.hostNeedsConfirm }
-        if (!urlValid) {
-            Text(
-                stringResource(R.string.settings_base_url_invalid),
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.error,
-            )
-        } else if (needsConfirm) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.settings_host_confirm, settings.keyHost.orEmpty()),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.weight(1f),
-                )
-                PillButton(
-                    text = stringResource(R.string.settings_host_allow),
-                    onClick = {
-                        settings.confirmHost()
-                        hostConfirmed++
-                    },
-                    selected = true,
-                )
-            }
-        }
-        if (engine == VoiceEngine.Whisper) SettingField(
-            value = model,
-            onChange = { model = it; settings.model = it },
-            label = stringResource(R.string.settings_model),
-            help = stringResource(R.string.settings_model_help),
-        )
-        SettingField(
-            value = language,
-            onChange = { language = it; settings.language = it },
-            label = stringResource(R.string.settings_language),
-            help = stringResource(R.string.settings_language_help),
-        )
-
-        Text(stringResource(R.string.settings_ai), style = MaterialTheme.typography.headlineSmall)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.settings_ai_cleanup))
-                Text(
-                    stringResource(if (hasKey) R.string.settings_ai_cleanup_help else R.string.settings_ai_needs_key),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                )
-            }
-            Switch(
-                checked = aiCleanup,
-                onCheckedChange = {
-                    aiCleanup = it
-                    settings.aiCleanup = it
-                },
-            )
-        }
-        SettingField(
-            value = aiModel,
-            onChange = { aiModel = it; settings.aiModel = it },
-            label = stringResource(R.string.settings_ai_model),
-            help = stringResource(R.string.settings_ai_model_help),
-        )
-
-        VocabularySection(vocabulary, onAddVocab, onDeleteVocab)
     }
 }
 
-/** Wispr-style dictionary: words to recognise, optionally rewritten to something else. */
 @Composable
-private fun VocabularySection(
-    entries: List<VocabEntry>,
-    onAdd: (String, String) -> Unit,
-    onDelete: (Long) -> Unit,
-) {
-    var term by remember { mutableStateOf("") }
-    var replacement by remember { mutableStateOf("") }
+private fun SettingsMenu(onOpen: (SettingsPage) -> Unit) {
+    Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineSmall)
+    Column {
+        SettingsPage.entries.forEach { target ->
+            val (title, help) = when (target) {
+                SettingsPage.Voice -> R.string.settings_page_voice to R.string.settings_page_voice_help
+                SettingsPage.Api -> R.string.settings_page_api to R.string.settings_page_api_help
+                SettingsPage.Ai -> R.string.settings_ai to R.string.settings_page_ai_help
+                SettingsPage.Floating -> R.string.settings_page_floating to R.string.settings_page_floating_help
+                SettingsPage.Backup -> R.string.settings_page_backup to R.string.settings_page_backup_help
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpen(target) }
+                    .padding(vertical = Dimens.SpaceM),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs)) {
+                    Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        stringResource(help),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text("›", style = MaterialTheme.typography.titleMedium, modifier = Modifier.clearAndSetSemantics {})
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        }
+    }
+}
+
+@Composable
+private fun VoicePage(settings: VoiceSettings, micGranted: Boolean, onRequestMic: () -> Unit) {
+    var autoRecord by remember { mutableStateOf(settings.autoRecord) }
+    var engine by remember { mutableStateOf(settings.engine) }
+    var model by remember { mutableStateOf(settings.model) }
+    var language by remember { mutableStateOf(settings.language) }
     val colors = MaterialTheme.colorScheme
+
+    Text(stringResource(R.string.settings_page_voice), style = MaterialTheme.typography.headlineSmall)
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
-        Text(stringResource(R.string.vocab_title), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.settings_engine))
+        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+            VoiceEngine.entries.forEach { option ->
+                PillButton(
+                    text = stringResource(
+                        if (option == VoiceEngine.Device) R.string.engine_device else R.string.engine_whisper
+                    ),
+                    onClick = {
+                        engine = option
+                        settings.engine = option
+                    },
+                    selected = engine == option,
+                )
+            }
+        }
         Text(
-            stringResource(R.string.vocab_help),
+            stringResource(
+                if (engine == VoiceEngine.Device) R.string.engine_device_help else R.string.engine_whisper_help
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = colors.onSurfaceVariant,
         )
-        OutlinedTextField(
-            value = term,
-            onValueChange = { term = it },
-            label = { Text(stringResource(R.string.vocab_word)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = replacement,
-            onValueChange = { replacement = it },
-            label = { Text(stringResource(R.string.vocab_replacement)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        PillButton(
-            text = stringResource(R.string.vocab_add),
-            onClick = {
-                if (term.isNotBlank()) {
-                    onAdd(term, replacement)
-                    term = ""
-                    replacement = ""
-                }
+    }
+    if (engine == VoiceEngine.Whisper) SettingField(
+        value = model,
+        onChange = { model = it; settings.model = it },
+        label = stringResource(R.string.settings_model),
+        help = stringResource(R.string.settings_model_help),
+    )
+    SettingField(
+        value = language,
+        onChange = { language = it; settings.language = it },
+        label = stringResource(R.string.settings_language),
+        help = stringResource(R.string.settings_language_help),
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(stringResource(R.string.settings_mic), modifier = Modifier.weight(1f))
+        if (micGranted) {
+            Text(stringResource(R.string.settings_mic_granted), color = colors.onSurfaceVariant)
+        } else {
+            PillButton(stringResource(R.string.settings_mic_allow), onRequestMic, selected = true)
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(stringResource(R.string.settings_auto_record), modifier = Modifier.weight(1f))
+        Switch(
+            checked = autoRecord,
+            onCheckedChange = {
+                autoRecord = it
+                settings.autoRecord = it
             },
-            selected = term.isNotBlank(),
         )
-        entries.forEach { entry ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (entry.replacement.isBlank()) entry.term else "${entry.term} → ${entry.replacement}",
-                    modifier = Modifier.weight(1f),
+    }
+}
+
+@Composable
+private fun ApiPage(settings: VoiceSettings) {
+    var hasKey by remember { mutableStateOf(settings.hasApiKey) }
+    var keyDraft by remember { mutableStateOf("") }
+    var baseUrl by remember { mutableStateOf(settings.baseUrl) }
+    var hostConfirmed by remember { mutableIntStateOf(0) }
+    val colors = MaterialTheme.colorScheme
+
+    Text(stringResource(R.string.settings_page_api), style = MaterialTheme.typography.headlineSmall)
+    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+        OutlinedTextField(
+            value = keyDraft,
+            onValueChange = { keyDraft = it },
+            label = { Text(stringResource(R.string.settings_api_key)) },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            stringResource(if (hasKey) R.string.settings_api_key_saved else R.string.settings_api_key_missing),
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+            PillButton(
+                text = stringResource(R.string.settings_save_key),
+                onClick = {
+                    if (keyDraft.isNotBlank()) {
+                        settings.setApiKey(keyDraft)
+                        keyDraft = ""
+                        hasKey = true
+                    }
+                },
+                selected = keyDraft.isNotBlank(),
+            )
+            if (hasKey) {
+                PillButton(
+                    text = stringResource(R.string.settings_remove_key),
+                    onClick = {
+                        settings.setApiKey("")
+                        hasKey = false
+                    },
                 )
-                TextButton(onClick = { onDelete(entry.id) }) { Text(stringResource(R.string.delete)) }
             }
         }
+    }
+    SettingField(
+        value = baseUrl,
+        onChange = { baseUrl = it; settings.baseUrl = it },
+        label = stringResource(R.string.settings_base_url),
+        help = stringResource(R.string.settings_base_url_help),
+        keyboardType = KeyboardType.Uri,
+    )
+    // Re-read on every change of address or key; hostConfirmed bumps it after Allow.
+    val urlValid = remember(baseUrl) { settings.baseUrlValid }
+    val needsConfirm = remember(baseUrl, hasKey, hostConfirmed) { settings.hostNeedsConfirm }
+    if (!urlValid) {
+        Text(
+            stringResource(R.string.settings_base_url_invalid),
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.error,
+        )
+    } else if (needsConfirm) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.settings_host_confirm, settings.keyHost.orEmpty()),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+            )
+            PillButton(
+                text = stringResource(R.string.settings_host_allow),
+                onClick = {
+                    settings.confirmHost()
+                    hostConfirmed++
+                },
+                selected = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AiPage(settings: VoiceSettings) {
+    var aiCleanup by remember { mutableStateOf(settings.aiCleanup) }
+    var aiModel by remember { mutableStateOf(settings.aiModel) }
+    val hasKey = remember { settings.hasApiKey }
+
+    Text(stringResource(R.string.settings_ai), style = MaterialTheme.typography.headlineSmall)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.settings_ai_cleanup))
+            Text(
+                stringResource(if (hasKey) R.string.settings_ai_cleanup_help else R.string.settings_ai_needs_key),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = aiCleanup,
+            onCheckedChange = {
+                aiCleanup = it
+                settings.aiCleanup = it
+            },
+        )
+    }
+    SettingField(
+        value = aiModel,
+        onChange = { aiModel = it; settings.aiModel = it },
+        label = stringResource(R.string.settings_ai_model),
+        help = stringResource(R.string.settings_ai_model_help),
+    )
+}
+
+@Composable
+private fun FloatingPage(openNewNote: Boolean, onOpenNewNoteChange: (Boolean) -> Unit) {
+    Text(stringResource(R.string.settings_page_floating), style = MaterialTheme.typography.headlineSmall)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.settings_float_new_note))
+            Text(
+                stringResource(R.string.settings_float_new_note_help),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = openNewNote, onCheckedChange = onOpenNewNoteChange)
+    }
+}
+
+@Composable
+private fun BackupPage(onExport: () -> Unit, onImport: () -> Unit, message: String?) {
+    Text(stringResource(R.string.settings_page_backup), style = MaterialTheme.typography.headlineSmall)
+    Text(
+        stringResource(R.string.backup_help),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+        PillButton(stringResource(R.string.backup_export), onExport, selected = true)
+        PillButton(stringResource(R.string.backup_import), onImport)
+    }
+    if (message != null) {
+        Text(message, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
     }
 }
 

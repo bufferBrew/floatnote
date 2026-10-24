@@ -19,22 +19,25 @@ class TranscriptPipeline(
     private val vocabulary: () -> List<VocabEntry>,
     private val cleanupEnabled: () -> Boolean,
     private val cleanUp: suspend (text: String, vocabulary: List<String>) -> String,
-    private val addToNote: (noteId: String, text: String) -> Unit,
+    private val addToNote: (noteId: String, text: String, continues: Boolean) -> Unit,
     private val addToHistory: suspend (noteId: String, text: String, raw: String) -> Unit,
 ) {
-    private val queue = Channel<Pair<String, String>>(Channel.UNLIMITED)
+    private class Item(val noteId: String, val raw: String, val continues: Boolean)
+
+    private val queue = Channel<Item>(Channel.UNLIMITED)
 
     init {
         scope.launch {
-            for ((noteId, raw) in queue) process(noteId, raw)
+            for (item in queue) process(item.noteId, item.raw, item.continues)
         }
     }
 
-    fun submit(noteId: String, raw: String) {
-        if (raw.isNotBlank()) queue.trySend(noteId to raw)
+    /** [continues]: the next sentence of the same dictation (joins the previous paragraph). */
+    fun submit(noteId: String, raw: String, continues: Boolean = false) {
+        if (raw.isNotBlank()) queue.trySend(Item(noteId, raw, continues))
     }
 
-    private suspend fun process(noteId: String, raw: String) {
+    private suspend fun process(noteId: String, raw: String, continues: Boolean) {
         val entries = vocabulary()
         var text = Vocabulary.apply(raw.trim(), entries)
         if (cleanupEnabled()) {
@@ -44,7 +47,7 @@ class TranscriptPipeline(
                 .let { Vocabulary.apply(it, entries) }
         }
         if (text.isBlank()) return
-        addToNote(noteId, text)
+        addToNote(noteId, text, continues)
         runCatching { addToHistory(noteId, text, raw.trim()) }
     }
 }

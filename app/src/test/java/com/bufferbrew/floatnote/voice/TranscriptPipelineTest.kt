@@ -22,7 +22,7 @@ class TranscriptPipelineTest {
         vocabulary = { listOf(VocabEntry(1, "FloatNote")) },
         cleanupEnabled = { cleanup },
         cleanUp = { t, v -> cleaner(t, v) },
-        addToNote = { id, t -> added += id to t },
+        addToNote = { id, t, _ -> added += id to t },
         addToHistory = { id, t, raw -> history += Triple(id, t, raw) },
     )
 

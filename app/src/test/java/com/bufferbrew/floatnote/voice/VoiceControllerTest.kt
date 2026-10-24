@@ -1,5 +1,6 @@
 package com.bufferbrew.floatnote.voice
 
+import com.bufferbrew.floatnote.util.TestStrings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -74,6 +75,7 @@ class VoiceControllerTest {
     private val transcripts = mutableListOf<Pair<String, String>>()
 
     private val voice = VoiceController(
+        strings = TestStrings,
         recorder = recorder,
         transcriber = transcriber,
         liveRecognizer = live,
@@ -82,7 +84,7 @@ class VoiceControllerTest {
         language = { "" },
         audioDir = dir,
         scope = scope,
-        onTranscript = { id, text -> transcripts += id to text },
+        onTranscript = { id, text, _ -> transcripts += id to text },
         clock = { scope.testScheduler.currentTime },
         sampleIntervalMs = 100,
         maxDurationMs = 10_000,
@@ -90,6 +92,7 @@ class VoiceControllerTest {
     )
 
     private fun silenceVoice() = VoiceController(
+        strings = TestStrings,
         recorder = recorder,
         transcriber = transcriber,
         liveRecognizer = live,
@@ -98,7 +101,7 @@ class VoiceControllerTest {
         language = { "" },
         audioDir = dir,
         scope = scope,
-        onTranscript = { id, text -> transcripts += id to text },
+        onTranscript = { id, text, _ -> transcripts += id to text },
         clock = { scope.testScheduler.currentTime },
         sampleIntervalMs = 100,
         maxDurationMs = 60_000,
@@ -147,6 +150,25 @@ class VoiceControllerTest {
         assertTrue(voice.isRecording)
         scope.advanceTimeBy(1_200)
         assertTrue(live.stopped)
+    }
+
+    @Test
+    fun `device sentences after the first are marked as continuing`() {
+        val flags = mutableListOf<Boolean>()
+        val v = VoiceController(
+            strings = TestStrings,
+            recorder = recorder, transcriber = transcriber, liveRecognizer = live,
+            engine = { VoiceEngine.Device }, config = { config }, language = { "" },
+            audioDir = dir, scope = scope, onTranscript = { _, _, continues -> flags += continues },
+            clock = { scope.testScheduler.currentTime },
+        )
+        v.start("n")
+        live.listener!!.onSegment("one")
+        live.listener!!.onSegment("two")
+        v.stop()
+        v.start("n")
+        live.listener!!.onSegment("three")
+        assertEquals(listOf(false, true, true, false), flags)
     }
 
     @After

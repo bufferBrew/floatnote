@@ -1,5 +1,6 @@
 package com.bufferbrew.floatnote.voice
 
+import com.bufferbrew.floatnote.util.TestStrings
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -16,7 +17,7 @@ class WhisperClientTest {
 
     private val server = MockWebServer()
     private lateinit var audio: File
-    private val client = WhisperClient()
+    private val client = WhisperClient(TestStrings)
 
     @Before
     fun setUp() {

@@ -28,7 +28,8 @@ Solo developer, main-branch workflow.
 - Kotlin · Jetpack Compose + Material 3
 - AGP 9.2.1 (built-in Kotlin) · Gradle 9.4.1 · Compose BOM 2026.06.00 — same as toddler-learn
 - Min SDK 26 (needed for TYPE_APPLICATION_OVERLAY) · Target/Compile SDK 37 · JVM 17 · single `:app` module
-- Persistence: Room (notes, blocks, dictation history, vocabulary). Settings in SharedPreferences.
+- Persistence: Room v3 (notes with `pinned`, blocks, dictation history, vocabulary). Settings in
+  SharedPreferences. Robolectric tests (`data/db/DatabaseTest`) run every migration.
 - Overlay: a foreground service that adds a `ComposeView` to `WindowManager`
   (`TYPE_APPLICATION_OVERLAY`). The service supplies its own Lifecycle /
   SavedStateRegistry / ViewModelStore owners so Compose works outside an Activity.
@@ -44,6 +45,7 @@ Solo developer, main-branch workflow.
 | Install     | `./gradlew installDebug`   |
 | Lint        | `./gradlew lint`           |
 | Release APK | `./gradlew assembleRelease` (unsigned without the signing properties) |
+| CI          | `.github/workflows/ci.yml`: unit tests, lint, release build |
 
 Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change done.
 
@@ -100,7 +102,15 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   edited, and offers Undo until the note closes.
 - `ui/history/HistoryContent.kt`: dictation history (copy, open note, delete, clear), in both hosts.
   The floating panel also has a quick note switcher: tap the title (▾) for a row of recent notes.
-- `ui/settings/SettingsContent.kt`: voice, AI and vocabulary settings in the full app.
+- `ui/settings/SettingsContent.kt`: Settings as a menu of pages (`SettingsPage`: Voice, API key and
+  server, AI, Floating note, Backup) in the full app. The Dictionary (`ui/dictionary/`) and History
+  are pages of their own beside the notes, in both hosts.
+- Notes list: search (`NoteViewModel.query` → `searchResults`), long-press for Pin / Delete (Undo bar).
+  The session also keeps undo/redo per open note (`onUndo` / `onRedo`).
+- `domain/NotesBackup.kt` + `data/NotesBackup.kt`: JSON export/import via the Storage Access Framework.
+- `util/Strings.kt`: user-facing text for classes without a Context. Every error message lives in
+  strings.xml; JVM tests use `TestStrings`, which reads the real file.
+- `voice/RecognizerPolicy.kt`: the device recognizer's error/reconnect/switch decisions, pure and tested.
 
 ## Architecture guardrails
 - Note editor UI is **one composable used by both the Activity and the overlay**:

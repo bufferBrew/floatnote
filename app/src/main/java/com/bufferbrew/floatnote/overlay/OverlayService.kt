@@ -9,10 +9,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
+import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.ContextThemeWrapper
+import android.view.Display
+import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.bufferbrew.floatnote.FloatNoteApp
@@ -39,7 +42,7 @@ class OverlayService : Service() {
         }
         val app = application as FloatNoteApp
         val current = window ?: OverlayWindow(
-            context = ContextThemeWrapper(this, R.style.Theme_FloatNote),
+            context = ContextThemeWrapper(overlayContext(), R.style.Theme_FloatNote),
             session = app.session,
             voice = app.voice,
             prefs = OverlayPrefs(this),
@@ -48,6 +51,18 @@ class OverlayService : Service() {
         current.show()
         // Not sticky: after a crash or kill, don't pop a window up unasked.
         return START_NOT_STICKY
+    }
+
+    /**
+     * A window context (Android 11+): the right base for a window that isn't an Activity. Its
+     * metrics follow the display it's on (fold/unfold, resolution changes), which a plain
+     * Service context doesn't guarantee, and it doesn't trip StrictMode's incorrect-context check.
+     */
+    private fun overlayContext(): Context {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return this
+        val display = getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY) ?: return this
+        return createDisplayContext(display)
+            .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

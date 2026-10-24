@@ -1,6 +1,8 @@
 package com.bufferbrew.floatnote.voice
 
 import androidx.compose.runtime.getValue
+import com.bufferbrew.floatnote.R
+import com.bufferbrew.floatnote.util.Strings
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
@@ -40,6 +42,7 @@ sealed interface VoiceState {
  *   you speak, and stop just flushes the last one.
  */
 class VoiceController(
+    private val strings: Strings,
     private val recorder: AudioRecorder,
     private val transcriber: Transcriber,
     private val liveRecognizer: LiveRecognizer,
@@ -52,7 +55,8 @@ class VoiceController(
     private val hints: () -> List<String> = { emptyList() },
     private val audioDir: File,
     private val scope: CoroutineScope,
-    private val onTranscript: (noteId: String, text: String) -> Unit,
+    /** [continues]: another sentence of the same live dictation, to join onto the previous one. */
+    private val onTranscript: (noteId: String, text: String, continues: Boolean) -> Unit,
     private val clock: () -> Long = System::currentTimeMillis,
     /** ~10 waveform updates a second: smooth enough, and cheap to draw in the overlay. */
     private val sampleIntervalMs: Long = 100,
@@ -85,6 +89,8 @@ class VoiceController(
     /** Set while the device engine is the one running. */
     private var liveNote: String? = null
     private var liveLevel = 0f
+    /** Sentences delivered so far in this live dictation. */
+    private var liveSegments = 0
     private var finishTimeout: Job? = null
 
     /** The upload in flight, and what to keep if it's cancelled. */
@@ -99,7 +105,7 @@ class VoiceController(
         }
         if (config() == null) {
             state = VoiceState.Error(
-                configProblem() ?: "Add your Whisper API key in Settings, or switch to device speech recognition.",
+                configProblem() ?: strings.get(R.string.err_no_key_or_device),
                 needsSettings = true,
             )
             return
@@ -110,7 +116,7 @@ class VoiceController(
             recorder.start(file)
         } catch (e: Exception) {
             file.delete()
-            state = VoiceState.Error("Couldn't start the microphone. Is another app using it?")
+            state = VoiceState.Error(strings.get(R.string.err_mic_busy))
             return
         }
         recordingFile = file
@@ -159,6 +165,7 @@ class VoiceController(
         discardPending()
         liveNote = noteId
         liveLevel = 0f
+        liveSegments = 0
         startedAt = clock()
         state = VoiceState.Recording(emptyList(), 0)
         try {
@@ -166,7 +173,7 @@ class VoiceController(
         } catch (e: IllegalStateException) {
             liveNote = null
             state = VoiceState.Error(
-                "This phone has no speech recognizer. Switch to Whisper in Settings.",
+                strings.get(R.string.err_no_recognizer),
                 needsSettings = true,
             )
             return
@@ -187,7 +194,7 @@ class VoiceController(
         }
 
         override fun onSegment(text: String) {
-            liveNote?.let { onTranscript(it, text) }
+            liveNote?.let { onTranscript(it, text, liveSegments++ > 0) }
             (state as? VoiceState.Recording)?.let { state = it.copy(partial = "") }
         }
 
@@ -263,7 +270,7 @@ class VoiceController(
                 pending = uploading
                 uploading = null
                 state = if (pending != null) {
-                    VoiceState.Error("Transcription cancelled. Retry to send the same recording.", canRetry = true)
+                    VoiceState.Error(strings.get(R.string.err_cancelled_retry), canRetry = true)
                 } else {
                     VoiceState.Idle
                 }
@@ -292,7 +299,7 @@ class VoiceController(
         if (cfg == null) {
             pending = file to noteId
             state = VoiceState.Error(
-                (configProblem() ?: "Add your Whisper API key in Settings.") + " Then retry.",
+                strings.get(R.string.err_then_retry, configProblem() ?: strings.get(R.string.err_no_key)),
                 canRetry = true,
                 needsSettings = true,
             )
@@ -304,11 +311,11 @@ class VoiceController(
             try {
                 val text = transcriber.transcribe(file, cfg)
                 file.delete()
-                if (text.isNotBlank()) onTranscript(noteId, text)
+                if (text.isNotBlank()) onTranscript(noteId, text, false)
                 state = VoiceState.Idle
             } catch (e: TranscriptionException) {
                 pending = file to noteId
-                state = VoiceState.Error(e.message ?: "Transcription failed.", canRetry = true)
+                state = VoiceState.Error(e.message ?: strings.get(R.string.err_transcription_failed), canRetry = true)
             } finally {
                 uploading = null
                 upload = null

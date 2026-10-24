@@ -1,6 +1,8 @@
 package com.bufferbrew.floatnote.ai
 
+import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.domain.NoteEditor
+import com.bufferbrew.floatnote.util.Strings
 import com.bufferbrew.floatnote.domain.model.Note
 import com.bufferbrew.floatnote.voice.LlmConfig
 import java.util.UUID
@@ -17,6 +19,7 @@ fun interface NoteOrganiser {
  * [config] is null when no API key is saved.
  */
 class NoteAssistant(
+    private val strings: Strings,
     private val model: ChatModel,
     private val config: () -> LlmConfig?,
     /** Why [config] is null, worded for the user. */
@@ -27,11 +30,11 @@ class NoteAssistant(
 
     override suspend fun organise(note: Note): Note {
         val cfg = config() ?: throw AiException(
-            configProblem()?.let { "Organise can't run: $it" } ?: "Organise needs an API key. Add one in Settings.",
+            configProblem()?.let { strings.get(R.string.err_organise_blocked, it) } ?: strings.get(R.string.err_no_key),
             needsSettings = true,
         )
         val reply = model.complete(ORGANISE_PROMPT, NoteFormat.toJson(note), cfg, json = true)
-        val organised = NoteFormat.fromJson(reply, note, newId)
+        val organised = NoteFormat.fromJson(reply, note, newId, strings)
         // Re-apply the note's task mode, so done tasks sit where the user expects.
         return editor.setTaskMode(organised, organised.taskMode)
     }

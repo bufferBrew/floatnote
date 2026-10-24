@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
@@ -58,6 +60,7 @@ import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.editor.NoteEditorContent
 import com.bufferbrew.floatnote.ui.editor.NoteViewModel
 import com.bufferbrew.floatnote.ui.editor.shareNote
+import com.bufferbrew.floatnote.ui.dictionary.DictionaryContent
 import com.bufferbrew.floatnote.ui.history.HistoryContent
 import com.bufferbrew.floatnote.ui.list.NoteListContent
 import com.bufferbrew.floatnote.ui.theme.BubbleColors
@@ -166,11 +169,17 @@ fun OverlayPanel(
     val app = context.applicationContext as FloatNoteApp
     var showAdjust by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    var showDictionary by remember { mutableStateOf(false) }
     var showSwitcher by remember { mutableStateOf(false) }
     val notes by session.notes.collectAsState(initial = emptyList())
     val note = session.note
     // Opening a note (from the switcher, history or list) always leaves the history view.
-    LaunchedEffect(note?.id) { if (note != null) showHistory = false }
+    LaunchedEffect(note?.id) {
+        if (note != null) {
+            showHistory = false
+            showDictionary = false
+        }
+    }
     val shape = RoundedCornerShape(Dimens.CornerL)
 
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dimens.CompactTouchTarget) {
@@ -194,11 +203,13 @@ fun OverlayPanel(
                         title = when {
                             note != null -> note.title.ifBlank { stringResource(R.string.untitled) }
                             showHistory -> stringResource(R.string.history_title)
+                            showDictionary -> stringResource(R.string.vocab_title)
                             else -> stringResource(R.string.notes_title)
                         },
                         onBack = when {
                             note != null -> session::closeNote
                             showHistory -> { { showHistory = false } }
+                            showDictionary -> { { showDictionary = false } }
                             else -> null
                         },
                         // In a note, tapping the title shows the quick note switcher.
@@ -234,21 +245,38 @@ fun OverlayPanel(
                             onOpenNote = session::open,
                             onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteDictation(id) } },
                             onClear = { app.persistScope.launch { app.voiceRepository.clearHistory() } },
+                            onUseOriginal = { session.useOriginal(it.noteId, it.text, it.raw ?: it.text) },
+                            modifier = bodyModifier,
+                            compact = true,
+                        )
+                    } else if (note == null && showDictionary) {
+                        val vocabulary by app.vocabulary.collectAsState()
+                        DictionaryContent(
+                            entries = vocabulary,
+                            onAdd = { term, replacement ->
+                                app.persistScope.launch { app.voiceRepository.addVocab(term, replacement) }
+                            },
+                            onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteVocab(id) } },
                             modifier = bodyModifier,
                             compact = true,
                         )
                     } else if (note == null) {
+                        val results by session.searchResults.collectAsState(initial = emptyList())
                         NoteListContent(
-                            notes = notes,
+                            notes = results,
                             onOpen = session::open,
                             onCreate = session::createNote,
                             onDelete = session::deleteNote,
                             modifier = bodyModifier,
                             onHistory = { showHistory = true },
+                            onDictionary = { showDictionary = true },
                             compact = true,
                             deletedTitle = session.recentlyDeleted?.title,
                             onUndoDelete = session::undoDelete,
                             onDeletedDismissed = session::clearDeleted,
+                            query = session.query,
+                            onQueryChange = { session.query = it },
+                            onPin = session::setPinned,
                         )
                     } else {
                         NoteEditorContent(
@@ -260,6 +288,8 @@ fun OverlayPanel(
                             modifier = bodyModifier,
                             compact = true,
                             assist = session.assist,
+                            canUndo = session.canUndo,
+                            canRedo = session.canRedo,
                             onShare = {
                                 // The share sheet is an Activity: it would open under the panel.
                                 onMinimise()
@@ -301,7 +331,7 @@ private fun PanelHeader(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(Dimens.CompactTouchTarget)
+                .heightIn(min = Dimens.CompactTouchTarget)
                 .windowDrag(onDragStart = onMoveStart, onDrag = onMove, onDragEnd = onMoveEnd, onTap = onTitleTap)
                 .semantics {
                     contentDescription = moveLabel
@@ -323,6 +353,7 @@ private fun PanelHeader(
                         if (switcherOpen) " ▴" else " ▾",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clearAndSetSemantics {},
                     )
                 }
             }
@@ -439,7 +470,8 @@ private fun ResizeHandle(
                 .padding(Dimens.SpaceS)
                 .size(Dimens.GrabberWidth / 3, Dimens.GrabberWidth / 3)
                 .clip(RoundedCornerShape(topStart = Dimens.CornerL))
-                .background(MaterialTheme.colorScheme.outline)
+                // onSurfaceVariant, not the hairline outline: the grip needs 3:1 to be findable.
+                .background(MaterialTheme.colorScheme.onSurfaceVariant)
         )
     }
 }

@@ -7,8 +7,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 interface NoteRepository {
-    /** All notes, most recently edited first. */
-    fun observeSummaries(): Flow<List<NoteSummary>>
+    /** Pinned first, then most recently edited. A non-blank [query] searches titles and lines. */
+    fun observeSummaries(query: String = ""): Flow<List<NoteSummary>>
+
+    /** Pins without touching "last edited". */
+    suspend fun setPinned(id: String, pinned: Boolean)
+
+    /** Every note, for export. */
+    suspend fun all(): List<Note>
 
     suspend fun load(id: String): Note?
 
@@ -25,16 +31,28 @@ class RoomNoteRepository(
     private val clock: () -> Long = System::currentTimeMillis,
 ) : NoteRepository {
 
-    override fun observeSummaries(): Flow<List<NoteSummary>> =
-        dao.observeSummaries().map { rows ->
-            rows.map { NoteSummary(it.id, it.title, it.preview, it.updatedAt) }
+    override fun observeSummaries(query: String): Flow<List<NoteSummary>> =
+        dao.observeSummaries(likePattern(query)).map { rows ->
+            rows.map { NoteSummary(it.id, it.title, it.preview, it.updatedAt, it.pinned) }
         }
 
+    override suspend fun setPinned(id: String, pinned: Boolean) = dao.setPinned(id, pinned)
+
+    override suspend fun all(): List<Note> = dao.everything().map { (note, blocks) -> note.toDomain(blocks) }
+
+    /** "50%_off" must match literally, so LIKE's wildcards in the query are escaped. */
+    private fun likePattern(query: String): String {
+        val q = query.trim()
+        if (q.isEmpty()) return ""
+        val escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return "%$escaped%"
+    }
+
     override suspend fun load(id: String): Note? =
-        dao.note(id)?.toDomain(dao.blocks(id))
+        dao.noteWithBlocks(id)?.let { (note, blocks) -> note.toDomain(blocks) }
 
     override suspend fun mostRecent(): Note? =
-        dao.mostRecent()?.let { it.toDomain(dao.blocks(it.id)) }
+        dao.mostRecentWithBlocks()?.let { (note, blocks) -> note.toDomain(blocks) }
 
     override suspend fun save(note: Note) =
         dao.replace(note.toEntity(updatedAt = clock()), note.toBlockEntities())

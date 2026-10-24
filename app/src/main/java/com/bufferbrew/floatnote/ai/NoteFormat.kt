@@ -1,6 +1,8 @@
 package com.bufferbrew.floatnote.ai
 
+import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.domain.model.Block
+import com.bufferbrew.floatnote.util.Strings
 import com.bufferbrew.floatnote.domain.model.Note
 import org.json.JSONArray
 import org.json.JSONObject
@@ -29,10 +31,10 @@ object NoteFormat {
      * Reads the model's reply into [base]'s id and task mode, with fresh block ids. Throws
      * [AiException] if the reply isn't usable, so the note is never replaced with garbage.
      */
-    fun fromJson(reply: String, base: Note, newId: () -> String): Note {
+    fun fromJson(reply: String, base: Note, newId: () -> String, strings: Strings): Note {
         val json = runCatching { JSONObject(stripFence(reply)) }
-            .getOrElse { throw AiException("The AI reply wasn't a note. Try again.", it) }
-        val array = json.optJSONArray("blocks") ?: throw AiException("The AI reply had no note content. Try again.")
+            .getOrElse { throw AiException(strings.get(R.string.err_ai_not_note), it) }
+        val array = json.optJSONArray("blocks") ?: throw AiException(strings.get(R.string.err_ai_no_content))
         val blocks = (0 until array.length()).mapNotNull { i ->
             val item = array.optJSONObject(i) ?: return@mapNotNull null
             val text = item.optString("text").trim()
@@ -45,7 +47,7 @@ object NoteFormat {
             }
         }
         if (blocks.isEmpty() && base.blocks.any { it.text.isNotBlank() }) {
-            throw AiException("The AI reply was empty, so your note was left as it was.")
+            throw AiException(strings.get(R.string.err_ai_empty))
         }
         val title = json.optString("title").trim().ifEmpty { base.title }
         return base.copy(title = title, blocks = blocks)

@@ -21,24 +21,24 @@ From a read-only review of the whole app. Paths are relative to `app/src/main/ja
 | 12 | Room migration test (1→2) and DAO tests | Tests | P1 | M | **Done 2026-10-24** (Robolectric migration + DAO tests). There's no androidTest folder |
 | 13 | Release signing, a single version source, an `assembleRelease` smoke test | Release | P1 | S | **Done 2026-10-24** (FLOATNOTE_* signing, version in gradle.properties, R8 build passes). No signingConfig, and the R8 rules file is empty |
 | 14 | Ask for notification permission in the Float flow (known issue) | Permissions | P1 | S | **Done 2026-10-24** (asked once). POST_NOTIFICATIONS is declared but never requested |
-| 15 | Load a note through the save mutex, inside a transaction | Data safety | P2 | S | Closing and quickly reopening a note can load a stale copy |
-| 16 | Build the overlay on a window context | Android versions | P2 | S | Stale screen bounds on foldables, and a StrictMode violation |
-| 17 | Drop `FLAG_WATCH_OUTSIDE_TOUCH` while it's a bubble | Battery | P3 | S | Every touch on the screen wakes the app |
-| 18 | Device engine: one paragraph per recording, not one block per sentence | UX | P2 | S | `appendTranscript` adds a new block for each sentence |
-| 19 | Backspace on an empty line merges it with the one above; undo/redo | UX | P2 | M | Today only the ✕ button removes a line |
-| 20 | Note search and pinning | Product | P2 | M | The list is plain, sorted by last edit |
-| 21 | Export and import notes (JSON or Markdown) | Data safety | P2 | M | Not implemented |
-| 22 | Announce voice status to TalkBack (live region) | Accessibility | P2 | S | `voice/VoiceUi.kt` |
-| 23 | Contrast: done tasks are at 50% alpha, and the hairline grip is about 1.2:1 | Accessibility | P2 | S | `ui/theme/Theme.kt` |
-| 24 | Stop TalkBack reading glyphs like "◐" and "✕" (`clearAndSetSemantics`) | Accessibility | P2 | S | `ui/components/Buttons.kt` |
-| 25 | Scale panel presets with the system font size | Accessibility | P2 | S | `overlay/WindowGeometry.kt` uses fixed dp sizes |
-| 26 | Move voice error messages into strings.xml | Code quality | P2 | S | They're hard-coded English |
-| 27 | Pure, tested state machine for the recognizer's restart, switch and watchdog logic | Tests | P2 | M | `voice/LiveRecognizer.kt` is untested |
-| 28 | Tests for VoiceSettings and OverlayPrefs | Tests | P2 | S | None today |
-| 29 | CI: unit tests, lint, release build | Release | P2 | S | There's no `.github/` folder |
-| 30 | Play Store readiness: privacy policy, Data safety form, special-use foreground service justification | Release | P2 | S | Audio and notes are sent to a third-party API |
-| 31 | Monochrome icon layer and a dark window theme | Polish | P3 | S | Lint also flags the missing monochrome icon |
+| 15 | Load a note through the save mutex, inside a transaction | Data safety | P2 | S | **Done 2026-10-24** (load via the save lock, note+blocks in one transaction). Closing and quickly reopening a note can load a stale copy |
+| 16 | Build the overlay on a window context | Android versions | P2 | S | **Done 2026-10-24** (window context on Android 11+). Stale screen bounds on foldables, and a StrictMode violation |
+| 17 | Drop `FLAG_WATCH_OUTSIDE_TOUCH` while it's a bubble | Battery | P3 | S | **Done 2026-10-24** (outside-touch only for the panel). Every touch on the screen wakes the app |
+| 18 | Device engine: one paragraph per recording, not one block per sentence | UX | P2 | S | **Done 2026-10-24** (one paragraph per dictation). `appendTranscript` adds a new block for each sentence |
+| 19 | Backspace on an empty line merges it with the one above; undo/redo | UX | P2 | M | **Done 2026-10-24** (Backspace removes an empty line; ↶ Undo / ↷ Redo). Today only the ✕ button removes a line |
+| 20 | Note search and pinning | Product | P2 | M | **Done 2026-10-24** (search box + pin from long-press (Room v3)). The list is plain, sorted by last edit |
+| 21 | Export and import notes (JSON or Markdown) | Data safety | P2 | M | **Done 2026-10-24** (Settings → Backup: JSON export/import). Not implemented |
+| 22 | Announce voice status to TalkBack (live region) | Accessibility | P2 | S | **Done 2026-10-24** (live regions for transcribing, errors, Undo bar). `voice/VoiceUi.kt` |
+| 23 | Contrast: done tasks are at 50% alpha, and the hairline grip is about 1.2:1 | Accessibility | P2 | S | **Done 2026-10-24** (done tasks in secondary ink; grip in onSurfaceVariant). `ui/theme/Theme.kt` |
+| 24 | Stop TalkBack reading glyphs like "◐" and "✕" (`clearAndSetSemantics`) | Accessibility | P2 | S | **Done 2026-10-24** (glyphs hidden from TalkBack). `ui/components/Buttons.kt` |
+| 25 | Scale panel presets with the system font size | Accessibility | P2 | S | **Done 2026-10-24** (presets and header grow with font size (≤1.5×)). `overlay/WindowGeometry.kt` uses fixed dp sizes |
+| 26 | Move voice error messages into strings.xml | Code quality | P2 | S | **Done 2026-10-24** (all voice/AI errors in strings.xml). They're hard-coded English |
+| 27 | Pure, tested state machine for the recognizer's restart, switch and watchdog logic | Tests | P2 | M | **Done 2026-10-24** (RecognizerPolicy, unit-tested). `voice/LiveRecognizer.kt` is untested |
+| 28 | Tests for VoiceSettings and OverlayPrefs | Tests | P2 | S | **Done 2026-10-24** (Robolectric tests with a fake cipher). None today |
+| 29 | CI: unit tests, lint, release build | Release | P2 | S | **Done 2026-10-24** (.github/workflows/ci.yml (not pushed)). There's no `.github/` folder |
+| 30 | Play Store readiness: privacy policy, Data safety form, special-use foreground service justification | Release | P2 | S | **Done 2026-10-24** (PRIVACY.md, docs/PLAY_STORE.md). Audio and notes are sent to a third-party API |
+| 31 | Monochrome icon layer and a dark window theme | Polish | P3 | S | **Done 2026-10-24** (monochrome icons, dark window theme). Lint also flags the missing monochrome icon |
 | 32 | CLAUDE.md says settings use DataStore; they use SharedPreferences | Docs | P3 | S | **Done 2026-10-24** (fixed). Doc drift |
-| 33 | Organise preview or diff, per-dictation "undo clean-up", and vocabulary learned from your corrections | Product | P3 | M | Builds on the new AI step and history |
+| 33 | Organise preview or diff, per-dictation "undo clean-up", and vocabulary learned from your corrections | Product | P3 | M | **Partly done 2026-10-24** (partly: History "Use what was heard". Organise preview and learned vocabulary not done). Builds on the new AI step and history |
 
-All P0 and P1 items are done (needs a device check). Next up are the P2s: 15 (load/save race), 18 (one paragraph per dictation), 22–25 (accessibility), 27 (recognizer tests), 29 (CI).
+Everything is done except part of #33 (an Organise preview/diff, and a dictionary that learns from your corrections). None of it has been checked on a device yet.

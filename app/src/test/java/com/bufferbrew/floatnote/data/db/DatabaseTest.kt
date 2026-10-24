@@ -62,6 +62,39 @@ class DatabaseTest {
     }
 
     @Test
+    fun `migrating 2 to 3 adds pinned, off for existing notes`() {
+        helper.createDatabase(DB, 2).use { v2 ->
+            v2.execSQL("INSERT INTO notes (id, title, taskMode, updatedAt) VALUES ('n1', 'Old', 'KeepInPlace', 5)")
+        }
+        helper.runMigrationsAndValidate(DB, 3, true).use { v3 ->
+            v3.query("SELECT title, pinned FROM notes WHERE id = 'n1'").use {
+                it.moveToFirst()
+                assertEquals("Old", it.getString(0))
+                assertEquals(0, it.getInt(1))
+            }
+        }
+    }
+
+    @Test
+    fun `search matches title or any line, literally, and pinned notes come first`() = runBlocking {
+        var now = 0L
+        val repo = RoomNoteRepository(db.noteDao(), clock = { ++now })
+        repo.save(Note("a", title = "Groceries", blocks = listOf(Block.Text("a1", "milk"))))
+        repo.save(Note("b", title = "Work", blocks = listOf(Block.Task("b1", "50% done report"))))
+        repo.save(Note("c", title = "Trip", blocks = listOf(Block.Text("c1", "passport"))))
+        assertEquals(listOf("c", "b", "a"), repo.observeSummaries().first().map { it.id })
+        assertEquals(listOf("a"), repo.observeSummaries("MILK").first().map { it.id })
+        assertEquals(listOf("b"), repo.observeSummaries("50%").first().map { it.id })
+        assertEquals(emptyList<String>(), repo.observeSummaries("5_").first().map { it.id })
+        repo.setPinned("a", true)
+        val ordered = repo.observeSummaries().first()
+        assertEquals(listOf("a", "c", "b"), ordered.map { it.id })
+        assertEquals(true, ordered.first().pinned)
+        assertEquals(true, repo.load("a")!!.pinned)
+        assertEquals(3, repo.all().size)
+    }
+
+    @Test
     fun `save round-trips a note, rewrites blocks, and summaries preview the first text`() = runBlocking {
         val repo = RoomNoteRepository(db.noteDao(), clock = { 100 })
         val note = Note(

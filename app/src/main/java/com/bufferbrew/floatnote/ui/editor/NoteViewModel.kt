@@ -5,7 +5,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.ai.AiException
+import com.bufferbrew.floatnote.util.Strings
 import com.bufferbrew.floatnote.ai.NoteOrganiser
 import com.bufferbrew.floatnote.data.NoteRepository
 import com.bufferbrew.floatnote.domain.NoteEditor
@@ -19,7 +21,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -37,14 +42,24 @@ import kotlinx.coroutines.sync.withLock
 class NoteViewModel(
     private val repository: NoteRepository,
     private val persistScope: CoroutineScope,
+    private val strings: Strings,
     private val editor: NoteEditor = NoteEditor(),
     private val saveDelayMs: Long = 400,
     /** The AI "Organise" step. Null only in tests that don't need it. */
     private val organiser: NoteOrganiser? = null,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : ViewModel(), NoteEditorActions {
 
-    /** All notes for the list screen. */
+    /** All notes (pinned first), for the floating panel's note switcher. */
     val notes: Flow<List<NoteSummary>> = repository.observeSummaries()
+
+    /** What the list's search box holds. */
+    var query by mutableStateOf("")
+
+    /** The list screen's notes: everything, or what matches [query]. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val searchResults: Flow<List<NoteSummary>> =
+        snapshotFlow { query }.flatMapLatest { repository.observeSummaries(it) }
 
     /** The open note, or null when the list should show. */
     var note by mutableStateOf<Note?>(null)
@@ -64,6 +79,23 @@ class NoteViewModel(
     private var beforeOrganise: Note? = null
     private var organisedIds: Set<String> = emptySet()
 
+    /**
+     * Undo/redo for the open note: snapshots of earlier versions. Typing into one line within
+     * [TYPING_GROUP_MS] counts as one step, so Undo removes a word or a phrase, not a letter.
+     */
+    private val undoStack = ArrayDeque<Note>()
+    private val redoStack = ArrayDeque<Note>()
+    private var lastTypedBlock: String? = null
+    private var lastTypedAt = 0L
+
+    var canUndo by mutableStateOf(false)
+        private set
+    var canRedo by mutableStateOf(false)
+        private set
+
+    /** The note and paragraph the current dictation is writing into. */
+    private var dictationBlock: Pair<String, String>? = null
+
     /** Block that currently has focus, used as the anchor for new blocks. */
     private var focusedBlockId: String? = null
     private var saveJob: Job? = null
@@ -73,7 +105,9 @@ class NoteViewModel(
     fun open(noteId: String) {
         if (note?.id == noteId) return
         closeNote()
-        viewModelScope.launch { note = repository.load(noteId) }
+        // Through the save lock: closing then quickly reopening a note must read the saved copy,
+        // not the one from before the close's save landed.
+        viewModelScope.launch { note = saveMutex.withLock { repository.load(noteId) } }
     }
 
     fun createNote() {
@@ -98,7 +132,7 @@ class NoteViewModel(
     fun ensureOpen() {
         if (note != null) return
         viewModelScope.launch {
-            if (note == null) note = repository.mostRecent() ?: editor.newNote()
+            if (note == null) note = saveMutex.withLock { repository.mostRecent() } ?: editor.newNote()
         }
     }
 
@@ -116,6 +150,7 @@ class NoteViewModel(
         focusedBlockId = null
         pendingFocus = null
         resetAssist()
+        clearHistory()
     }
 
     /** The note deleted last, offered for Undo on the list until [clearDeleted]. */
@@ -139,6 +174,16 @@ class NoteViewModel(
         }
     }
 
+    /** Pins or unpins without changing "last edited". The open note is changed in memory too. */
+    fun setPinned(noteId: String, pinned: Boolean) {
+        if (note?.id == noteId) {
+            edit { it.copy(pinned = pinned) }
+            flush()
+        } else {
+            persist { repository.setPinned(noteId, pinned) }
+        }
+    }
+
     fun undoDelete() {
         val restored = recentlyDeleted ?: return
         recentlyDeleted = null
@@ -149,12 +194,12 @@ class NoteViewModel(
         recentlyDeleted = null
     }
 
-    override fun onTitleChange(title: String) = edit { editor.setTitle(it, title) }
+    override fun onTitleChange(title: String) = edit(typingIn = TITLE_KEY) { editor.setTitle(it, title) }
 
     override fun onToggle(blockId: String) = edit { editor.toggle(it, blockId) }
 
     /** A newline typed into a list item splits it into two items, like Enter in Keep. */
-    override fun onTextChange(blockId: String, text: String) = edit { current ->
+    override fun onTextChange(blockId: String, text: String) = edit(typingIn = blockId) { current ->
         val block = current.blocks.firstOrNull { it.id == blockId }
         val newline = text.indexOf('\n')
         if (block == null || block is Block.Text || newline < 0) {
@@ -194,9 +239,14 @@ class NoteViewModel(
      * on, it's written straight to storage. A note deleted as blank while the transcript was in
      * flight is recreated, so speech is never lost.
      */
-    fun addTranscript(noteId: String, text: String) {
+    fun addTranscript(noteId: String, text: String, continues: Boolean = false) {
         if (note?.id == noteId) {
-            edit { editor.appendTranscript(it, text) }
+            val target = dictationBlock?.takeIf { continues && it.first == noteId }?.second
+            edit { current ->
+                if (target != null) editor.continueTranscript(current, target, text)
+                else editor.appendTranscript(current, text)
+            }
+            note?.blocks?.lastOrNull()?.let { dictationBlock = noteId to it.id }
             return
         }
         persist {
@@ -220,7 +270,7 @@ class NoteViewModel(
             val result = try {
                 organiser.organise(snapshot)
             } catch (e: AiException) {
-                assist = AssistState.Error(e.message ?: "Organise failed.", e.needsSettings)
+                assist = AssistState.Error(e.message ?: strings.get(R.string.err_organise_failed), e.needsSettings)
                 return@launch
             }
             val current = note
@@ -230,7 +280,7 @@ class NoteViewModel(
                 current.blocks.filter { it.id in snapshotIds }.toSet() != snapshot.blocks.toSet() ||
                 current.blocks.count { it.id in snapshotIds } != snapshot.blocks.size
             if (edited) {
-                assist = AssistState.Error("The note changed while organising, so nothing was replaced. Try again.")
+                assist = AssistState.Error(strings.get(R.string.err_organise_edited))
                 return@launch
             }
             val added = current.blocks.filter { it.id !in snapshotIds }
@@ -262,6 +312,53 @@ class NoteViewModel(
         assist = AssistState.Idle
     }
 
+    override fun onUndo() {
+        val previous = undoStack.removeLastOrNull() ?: return
+        val current = note ?: return
+        redoStack.addLast(current)
+        restore(previous)
+    }
+
+    override fun onRedo() {
+        val next = redoStack.removeLastOrNull() ?: return
+        val current = note ?: return
+        undoStack.addLast(current)
+        restore(next)
+    }
+
+    private fun restore(version: Note) {
+        note = version
+        lastTypedBlock = null
+        if (focusedBlockId != null && version.blocks.none { it.id == focusedBlockId }) focusedBlockId = null
+        markDirty()
+        updateUndoFlags()
+    }
+
+    private fun clearHistory() {
+        undoStack.clear()
+        redoStack.clear()
+        lastTypedBlock = null
+        updateUndoFlags()
+    }
+
+    private fun updateUndoFlags() {
+        canUndo = undoStack.isNotEmpty()
+        canRedo = redoStack.isNotEmpty()
+    }
+
+    /** From History: put back what was heard in place of the cleaned-up text. */
+    fun useOriginal(noteId: String, cleaned: String, raw: String) {
+        if (note?.id == noteId) {
+            edit { editor.replaceLast(it, cleaned, raw) }
+            return
+        }
+        persist {
+            val base = repository.load(noteId) ?: return@persist
+            val changed = editor.replaceLast(base, cleaned, raw)
+            if (changed != base) repository.save(changed)
+        }
+    }
+
     override fun onFocusChanged(blockId: String, focused: Boolean) {
         if (focused) focusedBlockId = blockId
         else if (focusedBlockId == blockId) focusedBlockId = null
@@ -280,6 +377,9 @@ class NoteViewModel(
         persist { repository.save(current) }
     }
 
+    /** Suspends until every save queued so far has been written (for export). */
+    suspend fun awaitSaves() = saveMutex.withLock { }
+
     /** UNDISPATCHED reaches the (FIFO) mutex immediately, so writes land in call order. */
     private fun persist(write: suspend () -> Unit) {
         persistScope.launch(start = CoroutineStart.UNDISPATCHED) { saveMutex.withLock { write() } }
@@ -287,16 +387,37 @@ class NoteViewModel(
 
     override fun onCleared() = flush()
 
-    private inline fun edit(change: (Note) -> Note) {
+    /** [typingIn]: the line being typed into, so a run of keystrokes is one undo step. */
+    private inline fun edit(typingIn: String? = null, change: (Note) -> Note) {
         val current = note ?: return
         val updated = change(current)
         if (updated == current) return
+        val now = clock()
+        val sameRun = typingIn != null && typingIn == lastTypedBlock && now - lastTypedAt < TYPING_GROUP_MS
+        if (!sameRun) {
+            undoStack.addLast(current)
+            if (undoStack.size > UNDO_LIMIT) undoStack.removeFirst()
+        }
+        redoStack.clear()
+        lastTypedBlock = typingIn
+        lastTypedAt = now
         note = updated
+        updateUndoFlags()
+        markDirty()
+    }
+
+    private fun markDirty() {
         dirty = true
         saveJob?.cancel()
         saveJob = viewModelScope.launch {
             delay(saveDelayMs)
             flush()
         }
+    }
+
+    private companion object {
+        const val TITLE_KEY = "title"
+        const val TYPING_GROUP_MS = 1_500L
+        const val UNDO_LIMIT = 100
     }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.bufferbrew.floatnote.R
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -48,7 +49,8 @@ enum class VoiceEngine {
  * The key is tied to the server it was saved for ([keyHost]): if the server address later points
  * somewhere else, the key isn't sent until the user confirms that host in Settings.
  */
-class VoiceSettings(context: Context) {
+class VoiceSettings(context: Context, private val cipher: SecretCipher = KeystoreCipher()) {
+    private val res = context.applicationContext.resources
     private val prefs = context.getSharedPreferences("voice", Context.MODE_PRIVATE)
     private val secret = context.getSharedPreferences("voice_secret", Context.MODE_PRIVATE)
 
@@ -119,7 +121,7 @@ class VoiceSettings(context: Context) {
             secret.edit().remove(KEY_API_KEY).remove(KEY_KEY_HOST).apply()
             return
         }
-        secret.edit().putString(KEY_API_KEY, encrypt(trimmed)).putString(KEY_KEY_HOST, hostOf(baseUrl)).apply()
+        secret.edit().putString(KEY_API_KEY, cipher.encrypt(trimmed)).putString(KEY_KEY_HOST, hostOf(baseUrl)).apply()
     }
 
     /**
@@ -134,15 +136,15 @@ class VoiceSettings(context: Context) {
 
     /** Why [config] is null, worded for the user; null when it isn't. */
     fun configProblem(): String? = when {
-        !hasApiKey -> "Add your API key in Settings, or switch to device speech recognition."
-        !baseUrlValid -> "The server address in Settings must start with https://"
-        hostNeedsConfirm -> "The server address changed. Confirm in Settings that your key may be sent there."
+        !hasApiKey -> res.getString(R.string.err_no_key_or_device)
+        !baseUrlValid -> res.getString(R.string.err_https_only)
+        hostNeedsConfirm -> res.getString(R.string.err_host_changed)
         else -> null
     }
 
     private fun storedKey(): String? {
         val stored = secret.getString(KEY_API_KEY, null) ?: return null
-        return runCatching { decrypt(stored) }.getOrNull()
+        return runCatching { cipher.decrypt(stored) }.getOrNull()
     }
 
     private fun hostOf(url: String): String? = url.toHttpUrlOrNull()?.host
@@ -150,6 +152,35 @@ class VoiceSettings(context: Context) {
     /** Null under the same conditions as [config]: AI features then explain via [configProblem]. */
     fun llmConfig(): LlmConfig? = config()?.let { LlmConfig(it.apiKey, it.baseUrl, aiModel) }
 
+    companion object {
+        const val DEFAULT_BASE_URL = "https://api.openai.com/v1"
+        const val DEFAULT_MODEL = "whisper-1"
+        const val DEFAULT_AI_MODEL = "gpt-4o-mini"
+
+
+        // "auto_record" was on by default until 2026-10-24; a new key turns it off for everyone.
+        private const val KEY_AUTO = "auto_record_opt_in"
+        private const val KEY_ENGINE = "engine"
+        private const val KEY_BASE_URL = "base_url"
+        private const val KEY_MODEL = "model"
+        private const val KEY_LANGUAGE = "language"
+        private const val KEY_API_KEY = "api_key"
+        private const val KEY_KEY_HOST = "key_host"
+        private const val KEY_AI_CLEANUP = "ai_cleanup"
+        private const val KEY_AI_MODEL = "ai_model"
+    }
+}
+
+/** Encrypts the API key at rest. An interface so tests (no Android Keystore there) can fake it. */
+interface SecretCipher {
+    fun encrypt(plain: String): String
+
+    /** Throws if [stored] can't be decrypted (e.g. restored onto another phone). */
+    fun decrypt(stored: String): String
+}
+
+/** AES-GCM with a key that never leaves the Android Keystore. */
+class KeystoreCipher : SecretCipher {
     private fun secretKey(): SecretKey {
         val store = KeyStore.getInstance(KEYSTORE).apply { load(null) }
         (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
@@ -167,14 +198,14 @@ class VoiceSettings(context: Context) {
     }
 
     /** Stored as base64(iv) + ":" + base64(ciphertext). */
-    private fun encrypt(plain: String): String {
+    override fun encrypt(plain: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, secretKey()) }
         val sealed = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
         return Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + ":" +
             Base64.encodeToString(sealed, Base64.NO_WRAP)
     }
 
-    private fun decrypt(stored: String): String {
+    override fun decrypt(stored: String): String {
         val (iv, sealed) = stored.split(":", limit = 2).map { Base64.decode(it, Base64.NO_WRAP) }
         val cipher = Cipher.getInstance(TRANSFORMATION).apply {
             init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
@@ -182,25 +213,10 @@ class VoiceSettings(context: Context) {
         return String(cipher.doFinal(sealed), Charsets.UTF_8)
     }
 
-    companion object {
-        const val DEFAULT_BASE_URL = "https://api.openai.com/v1"
-        const val DEFAULT_MODEL = "whisper-1"
-        const val DEFAULT_AI_MODEL = "gpt-4o-mini"
-
-        private const val KEYSTORE = "AndroidKeyStore"
-        private const val KEY_ALIAS = "floatnote_whisper_key"
-        private const val TRANSFORMATION = "AES/GCM/NoPadding"
-        private const val GCM_TAG_BITS = 128
-
-        // "auto_record" was on by default until 2026-10-24; a new key turns it off for everyone.
-        private const val KEY_AUTO = "auto_record_opt_in"
-        private const val KEY_ENGINE = "engine"
-        private const val KEY_BASE_URL = "base_url"
-        private const val KEY_MODEL = "model"
-        private const val KEY_LANGUAGE = "language"
-        private const val KEY_API_KEY = "api_key"
-        private const val KEY_KEY_HOST = "key_host"
-        private const val KEY_AI_CLEANUP = "ai_cleanup"
-        private const val KEY_AI_MODEL = "ai_model"
+    private companion object {
+        const val KEYSTORE = "AndroidKeyStore"
+        const val KEY_ALIAS = "floatnote_whisper_key"
+        const val TRANSFORMATION = "AES/GCM/NoPadding"
+        const val GCM_TAG_BITS = 128
     }
 }

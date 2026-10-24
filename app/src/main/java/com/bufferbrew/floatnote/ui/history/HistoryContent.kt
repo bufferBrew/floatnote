@@ -45,6 +45,8 @@ fun HistoryContent(
     onDelete: (Long) -> Unit,
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Swap the cleaned-up text in its note back to what was heard. */
+    onUseOriginal: ((Dictation) -> Unit)? = null,
     compact: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -122,6 +124,9 @@ fun HistoryContent(
                             PillButton(stringResource(R.string.history_copy), { context.copy(entry.text) }, dense = true)
                             PillButton(stringResource(R.string.history_open_note), { onOpenNote(entry.noteId) }, dense = true)
                             PillButton(stringResource(R.string.delete), { onDelete(entry.id) }, dense = true)
+                        }
+                        if (entry.raw != null && onUseOriginal != null) {
+                            PillButton(stringResource(R.string.history_use_original), { onUseOriginal(entry) }, dense = true)
                         }
                     }
                 }

@@ -11,6 +11,7 @@ import com.bufferbrew.floatnote.data.db.FloatNoteDatabase
 import com.bufferbrew.floatnote.domain.Vocabulary
 import com.bufferbrew.floatnote.domain.model.VocabEntry
 import com.bufferbrew.floatnote.ui.editor.NoteViewModel
+import com.bufferbrew.floatnote.util.strings
 import com.bufferbrew.floatnote.voice.AndroidLiveRecognizer
 import com.bufferbrew.floatnote.voice.MediaAudioRecorder
 import com.bufferbrew.floatnote.voice.TranscriptPipeline
@@ -43,7 +44,7 @@ class FloatNoteApp : Application() {
     val voiceSettings: VoiceSettings by lazy { VoiceSettings(this) }
 
     /** AI clean-up and Organise, on the same OpenAI-compatible server and key as Whisper. */
-    val assistant: NoteAssistant by lazy { NoteAssistant(ChatClient(), voiceSettings::llmConfig, voiceSettings::configProblem) }
+    val assistant: NoteAssistant by lazy { NoteAssistant(strings(), ChatClient(strings()), voiceSettings::llmConfig, voiceSettings::configProblem) }
 
     /**
      * The one editing session for the whole process. App-scoped rather than Activity-scoped so
@@ -51,7 +52,7 @@ class FloatNoteApp : Application() {
      * [NoteViewModel.flush] when they go away, since this is never cleared.
      */
     val session: NoteViewModel by lazy {
-        NoteViewModel(repository, persistScope, organiser = assistant)
+        NoteViewModel(repository, persistScope, strings(), organiser = assistant)
     }
 
     /** Kept current in memory, because recognition needs it synchronously at each start. */
@@ -73,8 +74,9 @@ class FloatNoteApp : Application() {
     /** One recorder for the process, so the bubble and the editor show the same recording. */
     val voice: VoiceController by lazy {
         VoiceController(
+            strings = strings(),
             recorder = MediaAudioRecorder(this),
-            transcriber = WhisperClient(),
+            transcriber = WhisperClient(strings()),
             liveRecognizer = AndroidLiveRecognizer(this),
             engine = { voiceSettings.engine },
             config = { voiceSettings.config()?.copy(prompt = Vocabulary.whisperPrompt(vocabulary.value)) },

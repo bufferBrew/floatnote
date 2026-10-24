@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -73,7 +74,8 @@ fun CircleButton(
                 },
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text(glyph, style = MaterialTheme.typography.labelLarge)
+                // The button says [label]; TalkBack shouldn't also read "◐" or "✕".
+                Text(glyph, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clearAndSetSemantics {})
             }
         }
     }

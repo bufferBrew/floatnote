@@ -39,6 +39,7 @@ import com.bufferbrew.floatnote.overlay.openFloatingNote
 import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.editor.NoteEditorContent
 import com.bufferbrew.floatnote.ui.editor.shareNote
+import com.bufferbrew.floatnote.ui.dictionary.DictionaryContent
 import com.bufferbrew.floatnote.ui.history.HistoryContent
 import com.bufferbrew.floatnote.ui.list.NoteListContent
 import com.bufferbrew.floatnote.ui.settings.SettingsContent
@@ -47,6 +48,8 @@ import com.bufferbrew.floatnote.ui.theme.FloatNoteTheme
 import com.bufferbrew.floatnote.voice.AppVoiceActions
 import com.bufferbrew.floatnote.voice.AutoRecordEffect
 import com.bufferbrew.floatnote.voice.hasMicPermission
+import androidx.lifecycle.lifecycleScope
+import com.bufferbrew.floatnote.data.NotesBackup
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -56,9 +59,19 @@ class MainActivity : ComponentActivity() {
 
     private var showSettings by mutableStateOf(false)
     private var showHistory by mutableStateOf(false)
+    private var showDictionary by mutableStateOf(false)
     private val overlayPrefs by lazy { OverlayPrefs(this) }
     private var openNewNote by mutableStateOf(false)
     private var micGranted by mutableStateOf(false)
+    private var backupMessage by mutableStateOf<String?>(null)
+
+    private val exportNotes = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) runBackup { NotesBackup.export(this, app, uri) }
+    }
+
+    private val importNotes = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runBackup { NotesBackup.import(this, app, uri) }
+    }
 
     /** Asked once, before the first float, so the floating note's Show/Close notification appears. */
     private val requestNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -93,24 +106,44 @@ class MainActivity : ComponentActivity() {
                     when {
                         showSettings -> {
                             BackHandler { showSettings = false }
-                            val vocabulary by app.vocabulary.collectAsState()
                             SettingsContent(
                                 settings = app.voiceSettings,
                                 micGranted = micGranted,
                                 onRequestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) },
-                                vocabulary = vocabulary,
-                                onAddVocab = { term, replacement ->
-                                    app.persistScope.launch { app.voiceRepository.addVocab(term, replacement) }
-                                },
-                                onDeleteVocab = { id -> app.persistScope.launch { app.voiceRepository.deleteVocab(id) } },
                                 openNewNote = openNewNote,
                                 onOpenNewNoteChange = {
                                     openNewNote = it
                                     overlayPrefs.openNewNote = it
                                 },
-                                onBack = { showSettings = false },
+                                onExport = { exportNotes.launch("floatnote-backup.json") },
+                                onImport = { importNotes.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                                backupMessage = backupMessage,
+                                onBack = {
+                                    showSettings = false
+                                    backupMessage = null
+                                },
                                 modifier = contentModifier,
                             )
+                        }
+                        showDictionary && note == null -> {
+                            BackHandler { showDictionary = false }
+                            val vocabulary by app.vocabulary.collectAsState()
+                            Column(contentModifier) {
+                                TextButton(onClick = { showDictionary = false }) {
+                                    Text(
+                                        stringResource(R.string.back_to_notes),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                DictionaryContent(
+                                    entries = vocabulary,
+                                    onAdd = { term, replacement ->
+                                        app.persistScope.launch { app.voiceRepository.addVocab(term, replacement) }
+                                    },
+                                    onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteVocab(id) } },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
                         }
                         showHistory && note == null -> {
                             BackHandler { showHistory = false }
@@ -130,12 +163,13 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteDictation(id) } },
                                     onClear = { app.persistScope.launch { app.voiceRepository.clearHistory() } },
+                                    onUseOriginal = { session.useOriginal(it.noteId, it.text, it.raw ?: it.text) },
                                     modifier = Modifier.weight(1f),
                                 )
                             }
                         }
                         note == null -> {
-                            val notes by session.notes.collectAsState(initial = emptyList())
+                            val notes by session.searchResults.collectAsState(initial = emptyList())
                             Column(contentModifier) {
                                 Row(
                                     Modifier.padding(top = Dimens.SpaceS),
@@ -152,9 +186,13 @@ class MainActivity : ComponentActivity() {
                                     onDelete = session::deleteNote,
                                     modifier = Modifier.weight(1f),
                                     onHistory = { showHistory = true },
+                                    onDictionary = { showDictionary = true },
                                     deletedTitle = session.recentlyDeleted?.title,
                                     onUndoDelete = session::undoDelete,
                                     onDeletedDismissed = session::clearDeleted,
+                                    query = session.query,
+                                    onQueryChange = { session.query = it },
+                                    onPin = session::setPinned,
                                 )
                             }
                         }
@@ -179,6 +217,8 @@ class MainActivity : ComponentActivity() {
                                     voiceActions = voiceActions,
                                     modifier = Modifier.weight(1f),
                                     assist = session.assist,
+                                    canUndo = session.canUndo,
+                                    canRedo = session.canRedo,
                                     onShare = { shareNote(note) },
                                 )
                             }
@@ -207,6 +247,18 @@ class MainActivity : ComponentActivity() {
             onClick = ::float,
             selected = true,
         )
+    }
+
+    /** Export/import off the main thread; the result line shows on the Backup page. */
+    private fun runBackup(work: suspend () -> String) {
+        backupMessage = getString(R.string.backup_working)
+        lifecycleScope.launch {
+            backupMessage = try {
+                work()
+            } catch (e: Exception) {
+                getString(R.string.backup_failed, e.message ?: e.javaClass.simpleName)
+            }
+        }
     }
 
     private fun float() {

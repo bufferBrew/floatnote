@@ -98,6 +98,33 @@ class NoteEditor(private val newId: () -> String = { UUID.randomUUID().toString(
     }
 
     /**
+     * Puts [replacement] where [find] last appears in the note (the newest dictation is lower
+     * down), e.g. to swap an AI-cleaned dictation back to what was heard. Unchanged if absent.
+     */
+    fun replaceLast(note: Note, find: String, replacement: String): Note {
+        if (find.isEmpty()) return note
+        val index = note.blocks.indexOfLast { it.text.contains(find) }
+        if (index < 0) return note
+        val block = note.blocks[index]
+        val at = block.text.lastIndexOf(find)
+        val text = block.text.substring(0, at) + replacement + block.text.substring(at + find.length)
+        return updateText(note, block.id, text)
+    }
+
+    /**
+     * The next sentence of a dictation: joined onto [blockId] with a space if that's still the
+     * last block and plain text, so one dictation reads as one paragraph. Otherwise a new block.
+     */
+    fun continueTranscript(note: Note, blockId: String, transcript: String): Note {
+        val text = transcript.trim()
+        if (text.isEmpty()) return note
+        val last = note.blocks.lastOrNull()
+        if (last !is Block.Text || last.id != blockId) return appendTranscript(note, text)
+        val joined = if (last.text.isBlank()) text else last.text.trimEnd() + " " + text
+        return updateText(note, blockId, joined)
+    }
+
+    /**
      * Switching to [TaskCompletionMode.MoveToBottom] sorts every task group so done tasks
      * sit at the end, keeping relative order. Switching to KeepInPlace changes nothing.
      */

@@ -1,6 +1,8 @@
 package com.bufferbrew.floatnote.ai
 
+import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.net.await
+import com.bufferbrew.floatnote.util.Strings
 import com.bufferbrew.floatnote.voice.LlmConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -32,6 +34,7 @@ interface ChatModel {
  * The key goes in the Authorization header only, and nothing here is logged.
  */
 class ChatClient(
+    private val strings: Strings,
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(45, TimeUnit.SECONDS)
@@ -52,7 +55,7 @@ class ChatClient(
             )
         if (json) payload.put("response_format", JSONObject().put("type", "json_object"))
         val url = (config.baseUrl.trimEnd('/') + "/chat/completions").toHttpUrlOrNull()
-            ?: throw AiException("The server address in Settings isn't a valid URL. It should start with https://", needsSettings = true)
+            ?: throw AiException(strings.get(R.string.err_invalid_url), needsSettings = true)
         val request = Request.Builder()
             .url(url)
             .header("Authorization", "Bearer ${config.apiKey}")
@@ -62,8 +65,7 @@ class ChatClient(
         val response = try {
             http.newCall(request).await()
         } catch (e: IOException) {
-            val reason = if (e is InterruptedIOException) "The AI service took too long." else
-                "Couldn't reach the AI service. Check your connection."
+            val reason = strings.get(if (e is InterruptedIOException) R.string.err_ai_slow else R.string.err_ai_unreachable)
             throw AiException(reason, e)
         }
         return withContext(Dispatchers.IO) {
@@ -73,7 +75,7 @@ class ChatClient(
                 runCatching {
                     JSONObject(text).getJSONArray("choices").getJSONObject(0)
                         .getJSONObject("message").getString("content").trim()
-                }.getOrElse { e -> throw AiException("Unexpected reply from the AI service.", e) }
+                }.getOrElse { e -> throw AiException(strings.get(R.string.err_ai_bad_reply), e) }
             }
         }
     }
@@ -81,12 +83,12 @@ class ChatClient(
     private fun errorMessage(code: Int, body: String): String {
         val detail = runCatching { JSONObject(body).getJSONObject("error").getString("message") }.getOrNull()
         val reason = when (code) {
-            401 -> "The API key was rejected. Check it in Settings."
-            404 -> "AI model or endpoint not found. Check the server address and AI model in Settings."
-            429 -> "Rate limit or quota reached on your API account."
-            else -> "The AI step failed (HTTP $code)."
+            401 -> strings.get(R.string.err_key_rejected)
+            404 -> strings.get(R.string.err_ai_404)
+            429 -> strings.get(R.string.err_rate_limit)
+            else -> strings.get(R.string.err_ai_http, code)
         }
-        return if (detail != null && code != 401) "$reason $detail" else reason
+        return if (detail != null && code != 401) strings.get(R.string.err_with_detail, reason, detail) else reason
     }
 
     private companion object {

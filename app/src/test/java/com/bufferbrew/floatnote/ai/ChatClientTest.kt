@@ -1,5 +1,6 @@
 package com.bufferbrew.floatnote.ai
 
+import com.bufferbrew.floatnote.util.TestStrings
 import com.bufferbrew.floatnote.voice.LlmConfig
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
@@ -13,7 +14,7 @@ import org.junit.Test
 
 class ChatClientTest {
     private val server = MockWebServer().apply { start() }
-    private val client = ChatClient()
+    private val client = ChatClient(TestStrings)
     private fun config(base: String = server.url("/v1").toString()) = LlmConfig("sk-test", base, "gpt-4o-mini")
 
     @After

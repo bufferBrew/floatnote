@@ -1,5 +1,6 @@
 package com.bufferbrew.floatnote.ai
 
+import com.bufferbrew.floatnote.util.TestStrings
 import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.Note
 import com.bufferbrew.floatnote.domain.model.TaskCompletionMode
@@ -37,7 +38,7 @@ class NoteFormatTest {
               {"type":"weird","text":"Note"},
               {"type":"text","text":"  "}]}
             ```"""
-        val note = NoteFormat.fromJson(reply, base, newId)
+        val note = NoteFormat.fromJson(reply, base, newId, TestStrings)
         assertEquals("n", note.id)
         assertEquals("Errands", note.title)
         assertEquals(TaskCompletionMode.KeepInPlace, note.taskMode)
@@ -54,14 +55,14 @@ class NoteFormatTest {
 
     @Test
     fun `keeps the old title when the reply has none`() {
-        val note = NoteFormat.fromJson("""{"blocks":[{"type":"text","text":"x"}]}""", base.copy(title = "Mine"), newId)
+        val note = NoteFormat.fromJson("""{"blocks":[{"type":"text","text":"x"}]}""", base.copy(title = "Mine"), newId, TestStrings)
         assertEquals("Mine", note.title)
     }
 
     @Test
     fun `rejects garbage and empty replies instead of wiping the note`() {
-        assertThrows(AiException::class.java) { NoteFormat.fromJson("Sure! Here you go", base, newId) }
-        assertThrows(AiException::class.java) { NoteFormat.fromJson("""{"title":"x","blocks":[]}""", base, newId) }
-        assertThrows(AiException::class.java) { NoteFormat.fromJson("""{"title":"x"}""", base, newId) }
+        assertThrows(AiException::class.java) { NoteFormat.fromJson("Sure! Here you go", base, newId, TestStrings) }
+        assertThrows(AiException::class.java) { NoteFormat.fromJson("""{"title":"x","blocks":[]}""", base, newId, TestStrings) }
+        assertThrows(AiException::class.java) { NoteFormat.fromJson("""{"title":"x"}""", base, newId, TestStrings) }
     }
 }

@@ -46,4 +46,5 @@ data class Note(
     val title: String = "",
     val blocks: List<Block> = emptyList(),
     val taskMode: TaskCompletionMode = TaskCompletionMode.MoveToBottom,
+    val pinned: Boolean = false,
 )

@@ -1,5 +1,6 @@
 package com.bufferbrew.floatnote.ui.editor
 
+import com.bufferbrew.floatnote.util.TestStrings
 import com.bufferbrew.floatnote.data.NoteRepository
 import com.bufferbrew.floatnote.domain.NoteEditor
 import com.bufferbrew.floatnote.domain.model.Block
@@ -28,7 +29,10 @@ class NoteViewModelTest {
     private class FakeRepository(private val initial: Note) : NoteRepository {
         val saved = mutableListOf<Note>()
         val deleted = mutableListOf<String>()
-        override fun observeSummaries() = emptyFlow<List<NoteSummary>>()
+        override fun observeSummaries(query: String) = emptyFlow<List<NoteSummary>>()
+        val pins = mutableListOf<Pair<String, Boolean>>()
+        override suspend fun setPinned(id: String, pinned: Boolean) { pins += id to pinned }
+        override suspend fun all() = listOf(initial)
         override suspend fun load(id: String) = initial.takeIf { it.id == id }
         override suspend fun mostRecent() = initial
         override suspend fun save(note: Note) { saved += note }
@@ -46,7 +50,7 @@ class NoteViewModelTest {
     private val repository = FakeRepository(start)
 
     private fun viewModel() =
-        NoteViewModel(repository, scope, NoteEditor { "new${++counter}" }, saveDelayMs = 400)
+        NoteViewModel(repository, scope, TestStrings, NoteEditor { "new${++counter}" }, saveDelayMs = 400)
             .also {
                 it.ensureOpen()
                 scope.runCurrent() // finish the load
@@ -57,7 +61,7 @@ class NoteViewModelTest {
 
     private fun organisingViewModel() =
         NoteViewModel(
-            repository, scope, NoteEditor { "new${++counter}" }, saveDelayMs = 400,
+            repository, scope, TestStrings, NoteEditor { "new${++counter}" }, saveDelayMs = 400,
             organiser = { note ->
                 organiseGate.await()
                 organiseResult(note)
@@ -130,6 +134,63 @@ class NoteViewModelTest {
         scope.runCurrent()
         assertNull(vm.note)
         assertEquals(AssistState.Idle, vm.assist)
+    }
+
+    private var now = 0L
+
+    private fun timedViewModel() =
+        NoteViewModel(repository, scope, TestStrings, NoteEditor { "new${++counter}" }, saveDelayMs = 400, clock = { now })
+            .also {
+                it.ensureOpen()
+                scope.runCurrent()
+            }
+
+    @Test
+    fun `undo and redo step through edits, grouping quick typing in one line`() {
+        val vm = timedViewModel()
+        assertTrue(!vm.canUndo)
+        vm.onTextChange("a", "f"); now += 100
+        vm.onTextChange("a", "fi"); now += 100
+        vm.onTextChange("a", "fix")
+        vm.onToggle("b")
+        vm.onUndo()
+        assertEquals("fix", vm.note!!.blocks.first { it.id == "a" }.text)
+        vm.onUndo()
+        assertEquals(start, vm.note)
+        assertTrue(!vm.canUndo)
+        vm.onRedo()
+        assertEquals("fix", vm.note!!.blocks.first { it.id == "a" }.text)
+        assertTrue(vm.canRedo)
+        vm.onTextChange("a", "fixed")
+        assertTrue("a new edit clears redo", !vm.canRedo)
+    }
+
+    @Test
+    fun `typing after a pause is a separate undo step`() {
+        val vm = timedViewModel()
+        vm.onTextChange("a", "one")
+        now += 5_000
+        vm.onTextChange("a", "one two")
+        vm.onUndo()
+        assertEquals("one", vm.note!!.blocks.first { it.id == "a" }.text)
+    }
+
+    @Test
+    fun `undo history is per note`() {
+        val vm = timedViewModel()
+        vm.onToggle("a")
+        vm.closeNote()
+        vm.createNote()
+        assertTrue(!vm.canUndo)
+    }
+
+    @Test
+    fun `a dictation's sentences join one paragraph`() {
+        val vm = viewModel()
+        vm.addTranscript("n", "Hello there.")
+        vm.addTranscript("n", "How are you?", continues = true)
+        vm.addTranscript("n", "New dictation.")
+        assertEquals(listOf("first", "second", "Hello there. How are you?", "New dictation."), vm.note?.blocks?.map { it.text })
     }
 
     @Before
