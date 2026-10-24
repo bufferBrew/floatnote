@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.core.content.ContextCompat
 import com.bufferbrew.floatnote.FloatLaunchActivity
@@ -65,8 +66,8 @@ class AppVoiceActions(
 
     override fun onMicToggle() {
         val noteId = app.session.note?.id ?: return
-        // Without a key, toggle() explains that first; no point asking for the mic yet.
-        if (app.voiceSettings.hasApiKey && !context.hasMicPermission()) {
+        // Not set up yet (Whisper without a key): toggle() explains; no point asking for the mic.
+        if (app.voiceSettings.isReady && !context.hasMicPermission()) {
             beforeOpeningScreen()
             context.startActivity(FloatLaunchActivity.requestMicIntent(context))
             return
@@ -94,7 +95,7 @@ fun AutoRecordEffect(noteId: String?) {
     val context = LocalContext.current
     val app = context.applicationContext as FloatNoteApp
     LaunchedEffect(noteId) {
-        if (noteId != null && app.voiceSettings.autoRecord && app.voiceSettings.hasApiKey &&
+        if (noteId != null && app.voiceSettings.autoRecord && app.voiceSettings.isReady &&
             context.hasMicPermission()
         ) {
             app.voice.start(noteId)
@@ -122,19 +123,32 @@ fun VoiceStatus(state: VoiceState, actions: VoiceActions, modifier: Modifier = M
             .padding(horizontal = Dimens.SpaceM, vertical = Dimens.SpaceS),
     ) {
         when (state) {
-            is VoiceState.Recording -> Row(verticalAlignment = Alignment.CenterVertically) {
-                Waveform(
-                    levels = state.levels,
-                    color = colors.onSurface,
-                    maxHeight = Dimens.WaveMaxHeight,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    stringResource(R.string.voice_listening, formatElapsed(state.elapsedMs)),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier.padding(start = Dimens.SpaceS),
-                )
+            is VoiceState.Recording -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Waveform(
+                        levels = state.levels,
+                        color = colors.onSurface,
+                        maxHeight = Dimens.WaveMaxHeight,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        stringResource(R.string.voice_listening, formatElapsed(state.elapsedMs)),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier.padding(start = Dimens.SpaceS),
+                    )
+                }
+                // Device engine: the sentence being heard, before it lands in the note.
+                if (state.partial.isNotBlank()) {
+                    Text(
+                        state.partial,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = Dimens.SpaceXs),
+                    )
+                }
             }
             VoiceState.Transcribing -> Text(
                 stringResource(R.string.voice_transcribing),

@@ -5,6 +5,7 @@ import com.bufferbrew.floatnote.data.NoteRepository
 import com.bufferbrew.floatnote.data.RoomNoteRepository
 import com.bufferbrew.floatnote.data.db.FloatNoteDatabase
 import com.bufferbrew.floatnote.ui.editor.NoteViewModel
+import com.bufferbrew.floatnote.voice.AndroidLiveRecognizer
 import com.bufferbrew.floatnote.voice.MediaAudioRecorder
 import com.bufferbrew.floatnote.voice.VoiceController
 import com.bufferbrew.floatnote.voice.VoiceSettings
@@ -40,7 +41,10 @@ class FloatNoteApp : Application() {
         VoiceController(
             recorder = MediaAudioRecorder(this),
             transcriber = WhisperClient(),
+            liveRecognizer = AndroidLiveRecognizer(this),
+            engine = { voiceSettings.engine },
             config = voiceSettings::config,
+            language = { voiceSettings.language },
             audioDir = File(cacheDir, "voice").apply { mkdirs() },
             scope = mainScope,
             onTranscript = session::addTranscript,

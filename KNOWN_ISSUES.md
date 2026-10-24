@@ -69,3 +69,15 @@
 - Ceiling (when this breaks): dictating longer than 10 minutes in one go.
 - Upgrade trigger (what to do when it's hit): split long recordings into chunks and transcribe them in order.
 - Status: open
+
+## 2026-10-24 — Device speech engine restarts between sentences
+- What changed / what shortcut was taken: Android's recognizer ends at each pause, so `AndroidLiveRecognizer` restarts it after every sentence. A few hundred milliseconds of speech right at a restart can be missed, and some recognizers play a start/stop tone on each restart. Android 13's segmented sessions would avoid this but aren't used yet.
+- Ceiling (when this breaks): fast talkers who don't pause, or anyone bothered by the tones.
+- Upgrade trigger (what to do when it's hit): on API 33+, use `RecognizerIntent.EXTRA_SEGMENTED_SESSION` with `onSegmentResults`/`onEndOfSegmentedSession`.
+- Status: open
+
+## 2026-10-24 — Device engine not yet tried on the phone
+- What changed / what shortcut was taken: the controller logic is unit-tested with a fake recognizer, but the real `SpeechRecognizer` (offline model availability, background use from the floating window, Samsung vs Google recognizer) hasn't been run on the S25 Ultra yet.
+- Ceiling (when this breaks): the phone's recognizer refusing to run while another app is in front, or having no offline model for the chosen language.
+- Upgrade trigger (what to do when it's hit): pick "This phone" in Settings, dictate from the floating window over another app, and read the log.
+- Status: open

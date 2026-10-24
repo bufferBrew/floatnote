@@ -12,8 +12,11 @@ import java.io.File
 sealed interface VoiceState {
     data object Idle : VoiceState
 
-    /** [levels] holds recent loudness samples, oldest first, for the waveform. */
-    data class Recording(val levels: List<Float>, val elapsedMs: Long) : VoiceState
+    /**
+     * [levels] holds recent loudness samples, oldest first, for the waveform. [partial] is the
+     * sentence being heard right now (device engine only; Whisper has no live text).
+     */
+    data class Recording(val levels: List<Float>, val elapsedMs: Long, val partial: String = "") : VoiceState
 
     data object Transcribing : VoiceState
 
@@ -26,22 +29,31 @@ sealed interface VoiceState {
 }
 
 /**
- * Record → transcribe → hand the text to [onTranscript] for the note that was open when
- * recording started. One instance per process (in FloatNoteApp), shared by the full app and
- * the overlay, so the bubble and the editor show the same state.
+ * Speech → text for the note that was open when recording started, via [onTranscript]. One
+ * instance per process (in FloatNoteApp), shared by the full app and the overlay, so the
+ * bubble and the editor show the same state.
  *
- * A failed upload keeps its audio file so [retry] doesn't need a new recording.
+ * Two engines, picked by [engine] at each start:
+ * - [VoiceEngine.Whisper]: record a clip, upload it on stop. A failed upload keeps its audio
+ *   file so [retry] doesn't need a new recording.
+ * - [VoiceEngine.Device]: Android's recognizer; each finished sentence goes into the note as
+ *   you speak, and stop just flushes the last one.
  */
 class VoiceController(
     private val recorder: AudioRecorder,
     private val transcriber: Transcriber,
+    private val liveRecognizer: LiveRecognizer,
+    private val engine: () -> VoiceEngine,
     private val config: () -> WhisperConfig?,
+    private val language: () -> String,
     private val audioDir: File,
     private val scope: CoroutineScope,
     private val onTranscript: (noteId: String, text: String) -> Unit,
     private val clock: () -> Long = System::currentTimeMillis,
     private val sampleIntervalMs: Long = 80,
     private val maxDurationMs: Long = 10 * 60 * 1000,
+    /** How long stop waits for the device recognizer's last sentence before giving up. */
+    private val finishTimeoutMs: Long = 3_000,
 ) {
     var state by mutableStateOf<VoiceState>(VoiceState.Idle)
         private set
@@ -56,10 +68,22 @@ class VoiceController(
     /** Audio kept after a failed upload, and the note it belongs to. */
     private var pending: Pair<File, String>? = null
 
+    /** Set while the device engine is the one running. */
+    private var liveNote: String? = null
+    private var liveLevel = 0f
+    private var finishTimeout: Job? = null
+
     fun start(noteId: String) {
         if (state is VoiceState.Recording || state is VoiceState.Transcribing) return
+        if (engine() == VoiceEngine.Device) {
+            startLive(noteId)
+            return
+        }
         if (config() == null) {
-            state = VoiceState.Error("Add your Whisper API key in Settings to use voice.", needsSettings = true)
+            state = VoiceState.Error(
+                "Add your Whisper API key in Settings, or switch to device speech recognition.",
+                needsSettings = true,
+            )
             return
         }
         discardPending()
@@ -75,13 +99,18 @@ class VoiceController(
         recordingNote = noteId
         startedAt = clock()
         state = VoiceState.Recording(emptyList(), 0)
+        startSampler { recorder.level() }
+    }
+
+    /** Ticks the timer and waveform; [level] reads the current loudness. */
+    private fun startSampler(level: () -> Float) {
         sampler = scope.launch {
             while (true) {
                 delay(sampleIntervalMs)
                 val current = state as? VoiceState.Recording ?: break
                 val elapsed = clock() - startedAt
                 state = current.copy(
-                    levels = (current.levels + recorder.level()).takeLast(MAX_LEVELS),
+                    levels = (current.levels + level()).takeLast(MAX_LEVELS),
                     elapsedMs = elapsed,
                 )
                 if (elapsed >= maxDurationMs) {
@@ -92,11 +121,72 @@ class VoiceController(
         }
     }
 
-    /** Stops recording and sends the clip off. No-op unless recording. */
+    private fun startLive(noteId: String) {
+        discardPending()
+        liveNote = noteId
+        liveLevel = 0f
+        startedAt = clock()
+        state = VoiceState.Recording(emptyList(), 0)
+        try {
+            liveRecognizer.start(language(), liveListener)
+        } catch (e: IllegalStateException) {
+            liveNote = null
+            state = VoiceState.Error(
+                "This phone has no speech recognizer. Switch to Whisper in Settings.",
+                needsSettings = true,
+            )
+            return
+        }
+        startSampler { liveLevel }
+    }
+
+    private val liveListener = object : LiveRecognizer.Listener {
+        override fun onLevel(level: Float) {
+            liveLevel = level
+        }
+
+        override fun onPartial(text: String) {
+            (state as? VoiceState.Recording)?.let { state = it.copy(partial = text) }
+        }
+
+        override fun onSegment(text: String) {
+            liveNote?.let { onTranscript(it, text) }
+            (state as? VoiceState.Recording)?.let { state = it.copy(partial = "") }
+        }
+
+        override fun onEnd() = endLive(VoiceState.Idle)
+
+        override fun onError(message: String) = endLive(VoiceState.Error(message))
+    }
+
+    private fun endLive(next: VoiceState) {
+        if (liveNote == null) return
+        sampler?.cancel()
+        sampler = null
+        finishTimeout?.cancel()
+        finishTimeout = null
+        liveNote = null
+        state = next
+    }
+
+    /** Stops recording: Whisper sends the clip off; the device engine flushes its last sentence. */
     fun stop() {
         if (state !is VoiceState.Recording) return
         sampler?.cancel()
         sampler = null
+        if (liveNote != null) {
+            state = VoiceState.Transcribing
+            liveRecognizer.stop()
+            // Normally onEnd arrives within a second; don't hang if the recognizer never answers.
+            if (liveNote != null) {
+                finishTimeout = scope.launch {
+                    delay(finishTimeoutMs)
+                    liveRecognizer.cancel()
+                    endLive(VoiceState.Idle)
+                }
+            }
+            return
+        }
         val file = recordingFile
         val noteId = recordingNote
         recordingFile = null

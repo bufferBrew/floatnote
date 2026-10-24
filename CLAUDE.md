@@ -73,6 +73,9 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - `voice/`: voice notes.
   - `VoiceController`: record → transcribe → `session.addTranscript(noteId, text)`. One per
     process (`FloatNoteApp.voice`), so bubble and editor share state. Keeps audio on failure for Retry.
+  - Two engines (`VoiceEngine`, chosen in Settings): Whisper (record, then upload) and Device
+    (`AndroidLiveRecognizer`: Android's SpeechRecognizer, on-device first, restarted after each
+    sentence for continuous dictation; sentences land in the note as they're heard).
   - `MediaAudioRecorder` (16 kHz mono AAC .m4a, live level), `WhisperClient` (OpenAI-compatible
     `/audio/transcriptions`, works with OpenAI or Groq), `VoiceSettings` (key encrypted with a
     Keystore AES-GCM key; base URL, model, language, auto-record).
@@ -108,6 +111,8 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   Activity, that keeps background mic access while another app is in front.
 - Activities (including the permission prompt) draw *under* overlay windows: minimise the
   overlay before opening one (`AppVoiceActions(beforeOpeningScreen = …)`).
+- The `<queries>` entry for `android.speech.RecognitionService` is required: without it,
+  Android 11+ hides the recognizer and `SpeechRecognizer.isRecognitionAvailable` returns false.
 - QS tile on Android 14+: use `startActivityAndCollapse(PendingIntent)`.
 - Overlay windows need `FLAG_LAYOUT_IN_SCREEN` (+ cutout mode ALWAYS on API 30+). Without it
   Android offsets them below the status bar, so x/y aren't screen coordinates. Clamp to

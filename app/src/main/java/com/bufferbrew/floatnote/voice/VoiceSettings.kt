@@ -20,6 +20,15 @@ data class WhisperConfig(
     val language: String,
 )
 
+/** Where speech becomes text. */
+enum class VoiceEngine {
+    /** Record, then upload to a Whisper-compatible API. Needs a key and a connection. */
+    Whisper,
+
+    /** Android's speech recognizer, offline when the phone has a model. Text appears live. */
+    Device,
+}
+
 /**
  * Voice settings. The API key is encrypted with an AES key that never leaves the Android
  * Keystore; only the ciphertext is stored. Never log the key or put it in a URL.
@@ -30,6 +39,16 @@ class VoiceSettings(context: Context) {
     var autoRecord: Boolean
         get() = prefs.getBoolean(KEY_AUTO, true)
         set(value) = prefs.edit().putBoolean(KEY_AUTO, value).apply()
+
+    /** Until chosen: Whisper if a key has been saved, otherwise the device recognizer. */
+    var engine: VoiceEngine
+        get() = prefs.getString(KEY_ENGINE, null)
+            ?.let { name -> VoiceEngine.entries.firstOrNull { it.name == name } }
+            ?: if (hasApiKey) VoiceEngine.Whisper else VoiceEngine.Device
+        set(value) = prefs.edit().putString(KEY_ENGINE, value.name).apply()
+
+    /** Whether recording can work without first visiting Settings. */
+    val isReady: Boolean get() = engine == VoiceEngine.Device || hasApiKey
 
     var baseUrl: String
         get() = prefs.getString(KEY_BASE_URL, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL
@@ -103,6 +122,7 @@ class VoiceSettings(context: Context) {
         private const val GCM_TAG_BITS = 128
 
         private const val KEY_AUTO = "auto_record"
+        private const val KEY_ENGINE = "engine"
         private const val KEY_BASE_URL = "base_url"
         private const val KEY_MODEL = "model"
         private const val KEY_LANGUAGE = "language"

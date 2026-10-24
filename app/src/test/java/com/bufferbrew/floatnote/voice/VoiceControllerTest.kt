@@ -39,23 +39,50 @@ class VoiceControllerTest {
         }
     }
 
+    private class FakeLive : LiveRecognizer {
+        var listener: LiveRecognizer.Listener? = null
+        var unavailable = false
+        var stopped = false
+        var cancelled = false
+        /** When false, stop() never answers, to exercise the timeout. */
+        var answersStop = true
+        override fun start(language: String, listener: LiveRecognizer.Listener) {
+            if (unavailable) throw IllegalStateException("none")
+            this.listener = listener
+        }
+        override fun stop() {
+            stopped = true
+            if (answersStop) {
+                listener?.onSegment("last words")
+                listener?.onEnd()
+            }
+        }
+        override fun cancel() { cancelled = true }
+    }
+
     private val dir: File = Files.createTempDirectory("voice").toFile()
     private val scope = TestScope(StandardTestDispatcher())
     private val recorder = FakeRecorder()
     private val transcriber = FakeTranscriber()
+    private val live = FakeLive()
+    private var engine = VoiceEngine.Whisper
     private var config: WhisperConfig? = WhisperConfig("k", "https://example.test/v1", "whisper-1", "")
     private val transcripts = mutableListOf<Pair<String, String>>()
 
     private val voice = VoiceController(
         recorder = recorder,
         transcriber = transcriber,
+        liveRecognizer = live,
+        engine = { engine },
         config = { config },
+        language = { "" },
         audioDir = dir,
         scope = scope,
         onTranscript = { id, text -> transcripts += id to text },
         clock = { scope.testScheduler.currentTime },
         sampleIntervalMs = 100,
         maxDurationMs = 10_000,
+        finishTimeoutMs = 3_000,
     )
 
     @After
@@ -171,5 +198,67 @@ class VoiceControllerTest {
         voice.toggle("a")
         scope.runCurrent()
         assertEquals(listOf("a" to "hello world"), transcripts)
+    }
+
+    @Test
+    fun `device engine streams sentences into the note as they are heard`() {
+        engine = VoiceEngine.Device
+        config = null // no Whisper key needed
+        voice.start("n")
+        assertTrue(voice.isRecording)
+        assertEquals(null, recorder.recording) // the file recorder isn't used
+
+        live.listener!!.onLevel(0.8f)
+        scope.advanceTimeBy(150)
+        assertEquals(0.8f, (voice.state as VoiceState.Recording).levels.last())
+
+        live.listener!!.onPartial("buy mi")
+        assertEquals("buy mi", (voice.state as VoiceState.Recording).partial)
+        live.listener!!.onSegment("buy milk")
+        assertEquals(listOf("n" to "buy milk"), transcripts)
+        assertEquals("", (voice.state as VoiceState.Recording).partial)
+
+        voice.stop()
+        assertTrue(live.stopped)
+        assertEquals(listOf("n" to "buy milk", "n" to "last words"), transcripts)
+        assertEquals(VoiceState.Idle, voice.state)
+        assertTrue(transcriber.sent.isEmpty())
+    }
+
+    @Test
+    fun `device engine stop gives up if the recognizer never answers`() {
+        engine = VoiceEngine.Device
+        live.answersStop = false
+        voice.start("n")
+        voice.stop()
+        assertEquals(VoiceState.Transcribing, voice.state)
+        scope.advanceTimeBy(3_001)
+        assertTrue(live.cancelled)
+        assertEquals(VoiceState.Idle, voice.state)
+    }
+
+    @Test
+    fun `device engine error is shown`() {
+        engine = VoiceEngine.Device
+        voice.start("n")
+        live.listener!!.onError("busy")
+        assertEquals("busy", (voice.state as VoiceState.Error).message)
+        assertFalse(voice.isRecording)
+    }
+
+    @Test
+    fun `no recognizer on the phone points to Settings`() {
+        engine = VoiceEngine.Device
+        live.unavailable = true
+        voice.start("n")
+        assertTrue((voice.state as VoiceState.Error).needsSettings)
+    }
+
+    @Test
+    fun `device engine respects the time limit`() {
+        engine = VoiceEngine.Device
+        voice.start("n")
+        scope.advanceTimeBy(10_050)
+        assertTrue(live.stopped)
     }
 }

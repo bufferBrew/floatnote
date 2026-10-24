@@ -26,6 +26,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.theme.Dimens
+import com.bufferbrew.floatnote.voice.VoiceEngine
 import com.bufferbrew.floatnote.voice.VoiceSettings
 
 /**
@@ -41,6 +42,7 @@ fun SettingsContent(
     modifier: Modifier = Modifier,
 ) {
     var autoRecord by remember { mutableStateOf(settings.autoRecord) }
+    var engine by remember { mutableStateOf(settings.engine) }
     var hasKey by remember { mutableStateOf(settings.hasApiKey) }
     var keyDraft by remember { mutableStateOf("") }
     var baseUrl by remember { mutableStateOf(settings.baseUrl) }
@@ -78,6 +80,31 @@ fun SettingsContent(
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+            Text(stringResource(R.string.settings_engine))
+            Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+                VoiceEngine.entries.forEach { option ->
+                    PillButton(
+                        text = stringResource(
+                            if (option == VoiceEngine.Device) R.string.engine_device else R.string.engine_whisper
+                        ),
+                        onClick = {
+                            engine = option
+                            settings.engine = option
+                        },
+                        selected = engine == option,
+                    )
+                }
+            }
+            Text(
+                stringResource(
+                    if (engine == VoiceEngine.Device) R.string.engine_device_help else R.string.engine_whisper_help
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+        }
+
+        if (engine == VoiceEngine.Whisper) Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
             OutlinedTextField(
                 value = keyDraft,
                 onValueChange = { keyDraft = it },
@@ -116,14 +143,14 @@ fun SettingsContent(
             }
         }
 
-        SettingField(
+        if (engine == VoiceEngine.Whisper) SettingField(
             value = baseUrl,
             onChange = { baseUrl = it; settings.baseUrl = it },
             label = stringResource(R.string.settings_base_url),
             help = stringResource(R.string.settings_base_url_help),
             keyboardType = KeyboardType.Uri,
         )
-        SettingField(
+        if (engine == VoiceEngine.Whisper) SettingField(
             value = model,
             onChange = { model = it; settings.model = it },
             label = stringResource(R.string.settings_model),
