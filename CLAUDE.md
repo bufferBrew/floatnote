@@ -51,10 +51,13 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - `data/db/`: Room `notes` + `blocks` tables (blocks cascade-delete). A save rewrites all of
   a note's blocks in one transaction. Schema JSON is exported to `app/schemas/`; commit it.
 - `data/NoteMapper.kt`, `data/NoteRepository.kt`: entity ↔ domain, `RoomNoteRepository`.
-- `FloatNoteApp`: manual DI root (`repository`, `persistScope`).
-- `ui/editor/NoteViewModel.kt`: holds the open note as Compose snapshot state (not a Flow, so
+- `FloatNoteApp`: manual DI root (`repository`, `persistScope`, `session`). `session` is the one
+  app-wide `NoteViewModel`, so the full app and the overlay edit the same in-memory note.
+- `ui/editor/NoteViewModel.kt`: the session (note list + open note). Holds the open note as Compose snapshot state (not a Flow, so
   text fields don't lose the cursor), with a debounced save plus `flush()` on stop/clear.
 - `ui/editor/NoteEditorContent.kt`: the stateless editor, driven through `NoteEditorActions`.
+- `ui/list/NoteListContent.kt`: the stateless note list (long-press to delete, with a confirm).
+  The app opens on the list. A note left blank is deleted on close instead of saved.
 
 ## Architecture guardrails
 - Note editor UI is **one composable used by both the Activity and the overlay**:

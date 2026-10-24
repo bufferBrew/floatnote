@@ -96,6 +96,47 @@ class NoteEditorTest {
     }
 
     @Test
+    fun `new task added after a done task joins the open ones`() {
+        val start = note(task("a"), task("b", done = true), task("c", done = true))
+        val (result, id) = editor.insertAfter(start, "c", BlockType.Task)
+        assertEquals(listOf("a", id, "b", "c"), result.ids())
+    }
+
+    @Test
+    fun `split of a done task puts the new open task above done ones`() {
+        val start = note(task("a"), task("b", done = true))
+        val (result, id) = editor.split(start, "b", "b", "next")
+        assertEquals(listOf("a", id, "b"), result.ids())
+        assertEquals("next", result.blocks[1].text)
+    }
+
+    @Test
+    fun `new task after an open task stays right below it`() {
+        val start = note(task("a"), task("b"), task("c", done = true))
+        val (result, id) = editor.insertAfter(start, "a", BlockType.Task)
+        assertEquals(listOf("a", id, "b", "c"), result.ids())
+    }
+
+    @Test
+    fun `converting a line to a task sorts it into its group`() {
+        val start = note(task("a", done = true), text("t"))
+        assertEquals(listOf("t", "a"), editor.changeType(start, "t", BlockType.Task).ids())
+    }
+
+    @Test
+    fun `removing the line between two lists merges and sorts them`() {
+        val start = note(task("a"), task("x", done = true), text("t"), task("b"))
+        assertEquals(listOf("a", "b", "x"), editor.remove(start, "t").ids())
+    }
+
+    @Test
+    fun `keep in place never re-sorts on structural edits`() {
+        val start = note(task("a", done = true), mode = TaskCompletionMode.KeepInPlace)
+        val (result, id) = editor.insertAfter(start, "a", BlockType.Task)
+        assertEquals(listOf("a", id), result.ids())
+    }
+
+    @Test
     fun `insert with null anchor appends`() {
         val (result, _) = editor.insertAfter(note(text("a")), null, BlockType.Text)
         assertEquals(listOf("a", "new1"), result.ids())

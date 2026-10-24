@@ -54,7 +54,7 @@ class NoteEditor(private val newId: () -> String = { UUID.randomUUID().toString(
         val block = emptyBlock(type)
         val position = afterId?.let { note.indexOf(it) }?.plus(1) ?: note.blocks.size
         val blocks = note.blocks.toMutableList().apply { add(position, block) }
-        return note.copy(blocks = blocks) to block.id
+        return note.copy(blocks = blocks).sortedGroups() to block.id
     }
 
     /**
@@ -70,8 +70,12 @@ class NoteEditor(private val newId: () -> String = { UUID.randomUUID().toString(
 
     fun setTitle(note: Note, title: String): Note = note.copy(title = title)
 
+    /** A fresh note starting with one empty text line, ready to type into. */
+    fun newNote(): Note = Note(id = newId(), blocks = listOf(Block.Text(newId(), "")))
+
+    /** Removing the line between two task lists merges them, so groups are re-sorted. */
     fun remove(note: Note, blockId: String): Note =
-        note.copy(blocks = note.blocks.filterNot { it.id == blockId })
+        note.copy(blocks = note.blocks.filterNot { it.id == blockId }).sortedGroups()
 
     /** Converts a block in place, keeping its id and text. Checked/done state resets. */
     fun changeType(note: Note, blockId: String, type: BlockType): Note {
@@ -82,7 +86,7 @@ class NoteEditor(private val newId: () -> String = { UUID.randomUUID().toString(
             BlockType.Checklist -> Block.Checklist(block.id, block.text)
             BlockType.Task -> Block.Task(block.id, block.text)
         }
-        return note.replaceAt(index, converted)
+        return note.replaceAt(index, converted).sortedGroups()
     }
 
     /** Adds transcribed speech as a new text block at the end. Blank input is ignored. */
@@ -96,22 +100,30 @@ class NoteEditor(private val newId: () -> String = { UUID.randomUUID().toString(
      * Switching to [TaskCompletionMode.MoveToBottom] sorts every task group so done tasks
      * sit at the end, keeping relative order. Switching to KeepInPlace changes nothing.
      */
-    fun setTaskMode(note: Note, mode: TaskCompletionMode): Note {
-        val withMode = note.copy(taskMode = mode)
-        if (mode == TaskCompletionMode.KeepInPlace) return withMode
-        val blocks = note.blocks.toMutableList()
-        for (group in taskGroups(blocks)) {
-            val sorted = blocks.subList(group.first, group.last + 1)
-                .sortedBy { (it as Block.Task).done } // stable: keeps relative order
-            sorted.forEachIndexed { offset, block -> blocks[group.first + offset] = block }
-        }
-        return withMode.copy(blocks = blocks)
-    }
+    fun setTaskMode(note: Note, mode: TaskCompletionMode): Note =
+        note.copy(taskMode = mode).sortedGroups()
 
     private fun emptyBlock(type: BlockType): Block = when (type) {
         BlockType.Text -> Block.Text(newId(), "")
         BlockType.Checklist -> Block.Checklist(newId(), "")
         BlockType.Task -> Block.Task(newId(), "")
+    }
+
+    /**
+     * In MoveToBottom mode, keeps the invariant "open tasks above done tasks" in every group by
+     * a stable sort. Run after any structural edit: a new open task added below a done one, a
+     * line converted to a task, or two groups merged by a removal all land in the right place.
+     * No-op in KeepInPlace mode.
+     */
+    private fun Note.sortedGroups(): Note {
+        if (taskMode == TaskCompletionMode.KeepInPlace) return this
+        val sorted = blocks.toMutableList()
+        for (group in taskGroups(sorted)) {
+            val ordered = sorted.subList(group.first, group.last + 1)
+                .sortedBy { (it as Block.Task).done } // stable: keeps relative order
+            ordered.forEachIndexed { offset, block -> sorted[group.first + offset] = block }
+        }
+        return if (sorted == blocks) this else copy(blocks = sorted)
     }
 
     private fun Note.indexOf(blockId: String): Int? =

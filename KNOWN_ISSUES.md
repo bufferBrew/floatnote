@@ -8,10 +8,10 @@
 - What changed / what shortcut was taken: `MainActivity` always opens the most recently edited note (or creates one). There is no way to browse, create or delete notes yet.
 - Ceiling (when this breaks): as soon as a second note is needed.
 - Upgrade trigger (what to do when it's hit): add a note list screen and pass a note id into `NoteViewModel`.
-- Status: open
+- Status: resolved (2026-10-24, `NoteListContent` + app-wide session; the app opens on the list)
 
 ## 2026-10-24 — New task inside the done section in move-to-bottom mode
 - What changed / what shortcut was taken: pressing Enter in (or adding after) a done task inserts an open task among the done ones. It stays there until the next toggle or mode switch reorders the group.
 - Ceiling (when this breaks): a user editing a completed task and pressing Enter sees an open task below done ones.
 - Upgrade trigger (what to do when it's hit): in `NoteEditor.insertAfter`, place new open tasks after the last open task of the group when the mode is MoveToBottom.
-- Status: open
+- Status: resolved (2026-10-24, `NoteEditor` re-sorts task groups after every insert, convert and remove in MoveToBottom mode)

@@ -36,3 +36,11 @@ data class BlockEntity(
     /** Checklist `checked` or task `done`; always false for text blocks. */
     val checked: Boolean,
 )
+
+/** Result row of [NoteDao.observeSummaries]. */
+data class NoteSummaryRow(
+    val id: String,
+    val title: String,
+    val updatedAt: Long,
+    val preview: String,
+)

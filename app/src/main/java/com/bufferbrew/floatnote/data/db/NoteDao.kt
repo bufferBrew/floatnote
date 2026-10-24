@@ -9,8 +9,16 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface NoteDao {
 
-    @Query("SELECT * FROM notes ORDER BY updatedAt DESC")
-    fun observeNotes(): Flow<List<NoteEntity>>
+    /** Room re-emits when either table changes, so previews stay current. */
+    @Query(
+        """
+        SELECT n.id, n.title, n.updatedAt,
+            COALESCE((SELECT b.text FROM blocks b WHERE b.noteId = n.id AND TRIM(b.text) != ''
+                ORDER BY b.position LIMIT 1), '') AS preview
+        FROM notes n ORDER BY n.updatedAt DESC
+        """
+    )
+    fun observeSummaries(): Flow<List<NoteSummaryRow>>
 
     @Query("SELECT * FROM notes WHERE id = :id")
     suspend fun note(id: String): NoteEntity?

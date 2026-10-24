@@ -10,17 +10,22 @@ import com.bufferbrew.floatnote.domain.NoteEditor
 import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.BlockType
 import com.bufferbrew.floatnote.domain.model.Note
+import com.bufferbrew.floatnote.domain.model.NoteSummary
+import com.bufferbrew.floatnote.domain.model.isBlank
 import com.bufferbrew.floatnote.domain.model.TaskCompletionMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * State holder for one open note, shared by the full-screen editor and the floating overlay.
+ * The note-editing session: the note list plus at most one open note. A single instance lives in
+ * [com.bufferbrew.floatnote.FloatNoteApp] and is shared by the full-screen app and the floating
+ * overlay, so both always show the same note and edits in one appear in the other at once.
  *
  * State is Compose snapshot state (not a Flow) so text fields read it synchronously; going
  * through a collected Flow makes the cursor jump while typing. Edits are saved after
@@ -34,6 +39,10 @@ class NoteViewModel(
     private val saveDelayMs: Long = 400,
 ) : ViewModel(), NoteEditorActions {
 
+    /** All notes for the list screen. */
+    val notes: Flow<List<NoteSummary>> = repository.observeSummaries()
+
+    /** The open note, or null when the list should show. */
     var note by mutableStateOf<Note?>(null)
         private set
 
@@ -47,8 +56,49 @@ class NoteViewModel(
     private var dirty = false
     private val saveMutex = Mutex()
 
-    init {
-        viewModelScope.launch { note = repository.mostRecentOrNew() }
+    fun open(noteId: String) {
+        if (note?.id == noteId) return
+        closeNote()
+        viewModelScope.launch { note = repository.load(noteId) }
+    }
+
+    fun createNote() {
+        closeNote()
+        val created = editor.newNote()
+        note = created
+        pendingFocus = created.blocks.first().id
+    }
+
+    /** Opens the last-edited note, or a new one, unless a note is already open. */
+    fun ensureOpen() {
+        if (note != null) return
+        viewModelScope.launch {
+            if (note == null) note = repository.mostRecent() ?: editor.newNote()
+        }
+    }
+
+    /** Saves the open note and returns to the list. A blank note is deleted instead. */
+    fun closeNote() {
+        val current = note ?: return
+        if (current.isBlank) {
+            saveJob?.cancel()
+            dirty = false
+            persist { repository.delete(current.id) }
+        } else {
+            flush()
+        }
+        note = null
+        focusedBlockId = null
+        pendingFocus = null
+    }
+
+    fun deleteNote(noteId: String) {
+        if (note?.id == noteId) {
+            saveJob?.cancel()
+            dirty = false
+            note = null
+        }
+        persist { repository.delete(noteId) }
     }
 
     override fun onTitleChange(title: String) = edit { editor.setTitle(it, title) }
@@ -108,10 +158,12 @@ class NoteViewModel(
         val current = note ?: return
         if (!dirty) return
         dirty = false
-        // UNDISPATCHED reaches the (FIFO) mutex immediately, so saves land in call order.
-        persistScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            saveMutex.withLock { repository.save(current) }
-        }
+        persist { repository.save(current) }
+    }
+
+    /** UNDISPATCHED reaches the (FIFO) mutex immediately, so writes land in call order. */
+    private fun persist(write: suspend () -> Unit) {
+        persistScope.launch(start = CoroutineStart.UNDISPATCHED) { saveMutex.withLock { write() } }
     }
 
     override fun onCleared() = flush()

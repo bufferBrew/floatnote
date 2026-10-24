@@ -5,8 +5,10 @@ import com.bufferbrew.floatnote.domain.NoteEditor
 import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.BlockType
 import com.bufferbrew.floatnote.domain.model.Note
+import com.bufferbrew.floatnote.domain.model.NoteSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -15,6 +17,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -24,10 +27,12 @@ class NoteViewModelTest {
 
     private class FakeRepository(private val initial: Note) : NoteRepository {
         val saved = mutableListOf<Note>()
-        override suspend fun load(id: String) = initial
-        override suspend fun mostRecentOrNew() = initial
+        val deleted = mutableListOf<String>()
+        override fun observeSummaries() = emptyFlow<List<NoteSummary>>()
+        override suspend fun load(id: String) = initial.takeIf { it.id == id }
+        override suspend fun mostRecent() = initial
         override suspend fun save(note: Note) { saved += note }
-        override suspend fun delete(id: String) = Unit
+        override suspend fun delete(id: String) { deleted += id }
     }
 
     private val dispatcher = StandardTestDispatcher()
@@ -42,7 +47,10 @@ class NoteViewModelTest {
 
     private fun viewModel() =
         NoteViewModel(repository, scope, NoteEditor { "new${++counter}" }, saveDelayMs = 400)
-            .also { scope.runCurrent() } // finish the initial load
+            .also {
+                it.ensureOpen()
+                scope.runCurrent() // finish the load
+            }
 
     @Before
     fun setUp() = Dispatchers.setMain(dispatcher)
@@ -113,5 +121,54 @@ class NoteViewModelTest {
         vm.onRemove("b")
         assertEquals(listOf("a"), vm.note!!.blocks.map { it.id })
         assertEquals("a", vm.pendingFocus)
+    }
+
+    @Test
+    fun `closing an edited note saves it and returns to the list`() {
+        val vm = viewModel()
+        vm.onTextChange("a", "changed")
+        vm.closeNote()
+        scope.runCurrent()
+        assertNull(vm.note)
+        assertEquals("changed", repository.saved.single().blocks[0].text)
+    }
+
+    @Test
+    fun `closing a blank new note deletes it instead of saving`() {
+        val vm = viewModel()
+        vm.closeNote()
+        vm.createNote()
+        val createdId = vm.note!!.id
+        vm.closeNote()
+        scope.advanceTimeBy(1_000)
+        assertEquals(listOf(createdId), repository.deleted)
+        assertTrue(repository.saved.isEmpty())
+    }
+
+    @Test
+    fun `new note focuses its first line`() {
+        val vm = viewModel()
+        vm.createNote()
+        assertEquals(vm.note!!.blocks.single().id, vm.pendingFocus)
+    }
+
+    @Test
+    fun `deleting the open note closes it without saving`() {
+        val vm = viewModel()
+        vm.onToggle("a")
+        vm.deleteNote("n")
+        scope.advanceTimeBy(1_000)
+        assertNull(vm.note)
+        assertEquals(listOf("n"), repository.deleted)
+        assertTrue(repository.saved.isEmpty())
+    }
+
+    @Test
+    fun `open loads the requested note`() {
+        val vm = viewModel()
+        vm.closeNote()
+        vm.open("n")
+        scope.runCurrent()
+        assertEquals(start, vm.note)
     }
 }

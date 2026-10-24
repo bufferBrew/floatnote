@@ -2,13 +2,18 @@ package com.bufferbrew.floatnote.data
 
 import com.bufferbrew.floatnote.data.db.NoteDao
 import com.bufferbrew.floatnote.domain.model.Note
-import java.util.UUID
+import com.bufferbrew.floatnote.domain.model.NoteSummary
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 interface NoteRepository {
+    /** All notes, most recently edited first. */
+    fun observeSummaries(): Flow<List<NoteSummary>>
+
     suspend fun load(id: String): Note?
 
-    /** The last-edited note, or a new empty one (saved) if there are none. */
-    suspend fun mostRecentOrNew(): Note
+    /** The last-edited note, or null if there are none. */
+    suspend fun mostRecent(): Note?
 
     suspend fun save(note: Note)
 
@@ -20,13 +25,16 @@ class RoomNoteRepository(
     private val clock: () -> Long = System::currentTimeMillis,
 ) : NoteRepository {
 
+    override fun observeSummaries(): Flow<List<NoteSummary>> =
+        dao.observeSummaries().map { rows ->
+            rows.map { NoteSummary(it.id, it.title, it.preview, it.updatedAt) }
+        }
+
     override suspend fun load(id: String): Note? =
         dao.note(id)?.toDomain(dao.blocks(id))
 
-    override suspend fun mostRecentOrNew(): Note {
-        dao.mostRecent()?.let { return it.toDomain(dao.blocks(it.id)) }
-        return Note(id = UUID.randomUUID().toString()).also { save(it) }
-    }
+    override suspend fun mostRecent(): Note? =
+        dao.mostRecent()?.let { it.toDomain(dao.blocks(it.id)) }
 
     override suspend fun save(note: Note) =
         dao.replace(note.toEntity(updatedAt = clock()), note.toBlockEntities())
