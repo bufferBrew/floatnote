@@ -68,7 +68,17 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   - `WindowDrag.kt`: drag/tap using raw screen coordinates. Use it for anything that moves
     the window; Compose drag gestures jitter because the window moves under the finger.
   - `WindowGeometry.kt`: pure clamp/resize maths, unit-tested.
-- `FloatLaunchActivity`: the "Float note" launcher entry for the Edge panel. No UI.
+- `FloatLaunchActivity`: the "Float note" launcher entry for the Edge panel. No UI. Also asks
+  for the mic on the overlay's behalf (`requestMicIntent`), since a Service can't.
+- `voice/`: voice notes.
+  - `VoiceController`: record → transcribe → `session.addTranscript(noteId, text)`. One per
+    process (`FloatNoteApp.voice`), so bubble and editor share state. Keeps audio on failure for Retry.
+  - `MediaAudioRecorder` (16 kHz mono AAC .m4a, live level), `WhisperClient` (OpenAI-compatible
+    `/audio/transcriptions`, works with OpenAI or Groq), `VoiceSettings` (key encrypted with a
+    Keystore AES-GCM key; base URL, model, language, auto-record).
+  - `VoiceUi.kt`: `AutoRecordEffect` (start when a note opens, stop + send when it closes),
+    `VoiceStatus` strip, `Waveform`, `AppVoiceActions`.
+- `ui/settings/SettingsContent.kt`: voice settings screen in the full app.
 
 ## Architecture guardrails
 - Note editor UI is **one composable used by both the Activity and the overlay**:
@@ -93,6 +103,11 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   `FOREGROUND_SERVICE_MICROPHONE` (Android 14+). Microphone FGS while-in-use access
   requires the start to come from a visible UI: launch it from the trampoline Activity /
   tile click, never from a background broadcast.
+- The overlay service declares `specialUse|microphone`; it adds the microphone type only when
+  RECORD_AUDIO is granted (declaring it without the permission throws). Started from a visible
+  Activity, that keeps background mic access while another app is in front.
+- Activities (including the permission prompt) draw *under* overlay windows: minimise the
+  overlay before opening one (`AppVoiceActions(beforeOpeningScreen = …)`).
 - QS tile on Android 14+: use `startActivityAndCollapse(PendingIntent)`.
 - Overlay windows need `FLAG_LAYOUT_IN_SCREEN` (+ cutout mode ALWAYS on API 30+). Without it
   Android offsets them below the status bar, so x/y aren't screen coordinates. Clamp to

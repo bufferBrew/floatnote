@@ -1,5 +1,10 @@
 package com.bufferbrew.floatnote.overlay
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -45,17 +50,29 @@ import com.bufferbrew.floatnote.ui.editor.NoteViewModel
 import com.bufferbrew.floatnote.ui.list.NoteListContent
 import com.bufferbrew.floatnote.ui.theme.BubbleColors
 import com.bufferbrew.floatnote.ui.theme.Dimens
+import com.bufferbrew.floatnote.voice.VoiceActions
+import com.bufferbrew.floatnote.voice.VoiceState
+import com.bufferbrew.floatnote.voice.WaveBar
+import kotlin.math.PI
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
-/** Bar heights of the bubble's little waveform, in dp. Static for now; animates once voice lands. */
-private val WaveHeights = listOf(8, 14, 20, 14, 8)
+/** Resting shape of the bubble's waveform, as fractions of full height. */
+private val RestingLevels = listOf(0.12f, 0.35f, 0.75f, 0.35f, 0.12f)
+private const val BubbleBars = 5
 
 /**
  * The minimised state, in the style of Wispr Flow's floating bar: a small dark pill with a
- * waveform. Drag it anywhere; tap to open the panel again.
+ * waveform. While recording the bars follow your voice; while transcribing they pulse.
+ * Drag it anywhere; tap to open the panel again.
  */
 @Composable
-fun OverlayBubble(onTap: () -> Unit, onDrag: (Int, Int) -> Unit, onDragEnd: () -> Unit) {
+fun OverlayBubble(
+    voiceState: VoiceState,
+    onTap: () -> Unit,
+    onDrag: (Int, Int) -> Unit,
+    onDragEnd: () -> Unit,
+) {
     val label = stringResource(R.string.open_floating_note)
     Box(
         modifier = Modifier
@@ -71,18 +88,21 @@ fun OverlayBubble(onTap: () -> Unit, onDrag: (Int, Int) -> Unit, onDragEnd: () -
             },
         contentAlignment = Alignment.Center,
     ) {
+        val levels = when (voiceState) {
+            is VoiceState.Recording -> {
+                // Mirror the latest samples around the centre bar, like a voice meter.
+                val recent = voiceState.levels.takeLast(3).let { List(3 - it.size) { 0f } + it }
+                listOf(recent[0], recent[1], recent[2], recent[1], recent[0])
+            }
+            VoiceState.Transcribing -> pulsingLevels()
+            else -> RestingLevels
+        }
         Row(
             horizontalArrangement = Arrangement.spacedBy(Dimens.WaveBarWidth),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            WaveHeights.forEach { height ->
-                Box(
-                    Modifier
-                        .width(Dimens.WaveBarWidth)
-                        .height(height.dp)
-                        .clip(CircleShape)
-                        .background(BubbleColors.Content)
-                )
+            levels.take(BubbleBars).forEach { level ->
+                WaveBar(level, BubbleColors.Content, Dimens.BubbleWaveMaxHeight)
             }
         }
     }
@@ -93,9 +113,24 @@ fun OverlayBubble(onTap: () -> Unit, onDrag: (Int, Int) -> Unit, onDragEnd: () -
  * full app, so every editing feature works here too; only the frame (grab bar to move, corner to
  * resize, opacity, minimise, close) is new.
  */
+/** A soft wave travelling across the bars while the clip is being transcribed. */
+@Composable
+private fun pulsingLevels(): List<Float> {
+    val transition = rememberInfiniteTransition(label = "transcribing")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(tween(durationMillis = 900, easing = LinearEasing)),
+        label = "phase",
+    )
+    return List(BubbleBars) { i -> 0.15f + 0.25f * (1 + sin(phase - i * 0.9f)) }
+}
+
 @Composable
 fun OverlayPanel(
     session: NoteViewModel,
+    voiceState: VoiceState,
+    voiceActions: VoiceActions,
     opacity: Float,
     onOpacityChange: (Float) -> Unit,
     onOpacityChangeFinished: () -> Unit,
@@ -158,6 +193,8 @@ fun OverlayPanel(
                             note = note,
                             pendingFocus = session.pendingFocus,
                             actions = session,
+                            voiceState = voiceState,
+                            voiceActions = voiceActions,
                             modifier = Modifier.weight(1f),
                         )
                     }

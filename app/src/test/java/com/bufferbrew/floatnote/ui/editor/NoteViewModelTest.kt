@@ -171,4 +171,31 @@ class NoteViewModelTest {
         scope.runCurrent()
         assertEquals(start, vm.note)
     }
+
+    @Test
+    fun `transcript goes into the open note`() {
+        val vm = viewModel()
+        vm.addTranscript("n", "spoken words")
+        assertEquals("spoken words", vm.note!!.blocks.last().text)
+    }
+
+    @Test
+    fun `transcript for a closed note is saved to storage`() {
+        val vm = viewModel()
+        vm.closeNote()
+        vm.addTranscript("n", "later words")
+        scope.runCurrent()
+        assertEquals("later words", repository.saved.last().blocks.last().text)
+        assertEquals("n", repository.saved.last().id)
+    }
+
+    @Test
+    fun `transcript for a note deleted as blank recreates it`() {
+        val vm = viewModel()
+        vm.addTranscript("gone", "rescued words")
+        scope.runCurrent()
+        val saved = repository.saved.last()
+        assertEquals("gone", saved.id)
+        assertEquals(listOf("rescued words"), saved.blocks.map { it.text })
+    }
 }

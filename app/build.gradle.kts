@@ -62,9 +62,14 @@ dependencies {
     implementation("androidx.room:room-ktx:2.8.5")
     ksp("androidx.room:room-compiler:2.8.5")
 
+    implementation("com.squareup.okhttp3:okhttp:4.12.1")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("io.mockk:mockk:1.14.7")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.1")
+    // Android's org.json is a stub in local unit tests; this is the real implementation.
+    testImplementation("org.json:json:20260814")
 }

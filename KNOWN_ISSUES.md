@@ -45,3 +45,27 @@
 - Ceiling (when this breaks): if it doesn't feel close enough to Wispr Flow next to the real thing.
 - Upgrade trigger (what to do when it's hit): compare against screenshots the user takes (Wispr blocks adb captures) and adjust `Theme.kt` and `OverlayUi.kt`.
 - Status: open
+
+## 2026-10-24 — Voice transcription not yet tried end to end on the phone
+- What changed / what shortcut was taken: recording, upload and error handling are unit-tested (fake recorder, MockWebServer for the Whisper API), and on the phone the no-key flow, settings and mic prompt were checked. A real recording → Whisper → note run needs the user's API key and mic permission, which only the user can enter and grant.
+- Ceiling (when this breaks): anything device- or account-specific: audio source quality, the provider's limits, background mic access on One UI.
+- Upgrade trigger (what to do when it's hit): after the key is saved and the mic allowed, record a note from the floating window over another app and check the transcript lands in the right note.
+- Status: open
+
+## 2026-10-24 — Transcripts always go to the end of the note
+- What changed / what shortcut was taken: each transcript is appended as a new text line at the bottom, not at the cursor.
+- Ceiling (when this breaks): dictating into the middle of a long note.
+- Upgrade trigger (what to do when it's hit): insert after the focused block when the note is open and something is focused.
+- Status: open
+
+## 2026-10-24 — Closing the floating window mid-recording
+- What changed / what shortcut was taken: ✕ stops the recording and starts the upload, then the service stops. If Android kills the process before the upload finishes, that clip is lost (the file is in the cache dir and is not retried on next launch).
+- Ceiling (when this breaks): closing right after a long recording on a slow connection.
+- Upgrade trigger (what to do when it's hit): keep the service alive until the upload finishes, or retry leftover clips on next start.
+- Status: open
+
+## 2026-10-24 — 10-minute recording cap
+- What changed / what shortcut was taken: a recording stops itself and uploads after 10 minutes, keeping files well under the Whisper API's 25 MB upload limit (~3.6 MB at 48 kbps).
+- Ceiling (when this breaks): dictating longer than 10 minutes in one go.
+- Upgrade trigger (what to do when it's hit): split long recordings into chunks and transcribe them in order.
+- Status: open

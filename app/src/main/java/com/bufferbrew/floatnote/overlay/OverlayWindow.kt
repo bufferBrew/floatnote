@@ -21,6 +21,9 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.bufferbrew.floatnote.ui.editor.NoteViewModel
 import com.bufferbrew.floatnote.ui.theme.FloatNoteTheme
+import com.bufferbrew.floatnote.voice.AppVoiceActions
+import com.bufferbrew.floatnote.voice.AutoRecordEffect
+import com.bufferbrew.floatnote.voice.VoiceController
 
 enum class OverlayMode { Panel, Bubble }
 
@@ -35,11 +38,13 @@ enum class OverlayMode { Panel, Bubble }
 class OverlayWindow(
     private val context: Context,
     private val session: NoteViewModel,
+    private val voice: VoiceController,
     private val prefs: OverlayPrefs,
     private val onClose: () -> Unit,
 ) {
     private val windowManager = context.getSystemService(WindowManager::class.java)
     private val owner = OverlayLifecycleOwner()
+    private val voiceActions = AppVoiceActions(context, beforeOpeningScreen = { minimise() })
 
     private var mode by mutableStateOf(OverlayMode.Panel)
     private var opacity by mutableFloatStateOf(prefs.opacity)
@@ -122,15 +127,20 @@ class OverlayWindow(
 
     @Composable
     private fun OverlayContent() {
+        // Here rather than in the panel, so minimising to the bubble keeps the recording going.
+        AutoRecordEffect(session.note?.id)
         FloatNoteTheme {
             when (mode) {
                 OverlayMode.Bubble -> OverlayBubble(
+                    voiceState = voice.state,
                     onTap = ::expand,
                     onDrag = { dx, dy -> moveBubble(dx, dy) },
                     onDragEnd = { prefs.bubble = bubble },
                 )
                 OverlayMode.Panel -> OverlayPanel(
                     session = session,
+                    voiceState = voice.state,
+                    voiceActions = voiceActions,
                     opacity = opacity,
                     onOpacityChange = ::changeOpacity,
                     onOpacityChangeFinished = { prefs.opacity = opacity },

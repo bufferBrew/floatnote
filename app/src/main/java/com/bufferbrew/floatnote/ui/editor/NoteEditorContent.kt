@@ -41,6 +41,9 @@ import com.bufferbrew.floatnote.domain.model.Note
 import com.bufferbrew.floatnote.domain.model.TaskCompletionMode
 import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.theme.Dimens
+import com.bufferbrew.floatnote.voice.VoiceActions
+import com.bufferbrew.floatnote.voice.VoiceState
+import com.bufferbrew.floatnote.voice.VoiceStatus
 
 /** Alpha for completed tasks, which stay readable but recede. */
 private const val DoneAlpha = 0.5f
@@ -54,6 +57,8 @@ fun NoteEditorContent(
     note: Note,
     pendingFocus: String?,
     actions: NoteEditorActions,
+    voiceState: VoiceState,
+    voiceActions: VoiceActions,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier) {
@@ -92,7 +97,13 @@ fun NoteEditorContent(
                 )
             }
         }
-        EditorToolbar(taskMode = note.taskMode, actions = actions)
+        VoiceStatus(voiceState, voiceActions, Modifier.padding(top = Dimens.SpaceS))
+        EditorToolbar(
+            taskMode = note.taskMode,
+            actions = actions,
+            recording = voiceState is VoiceState.Recording,
+            onMic = voiceActions::onMicToggle,
+        )
     }
 }
 
@@ -179,7 +190,12 @@ private fun EditorTextField(
 }
 
 @Composable
-private fun EditorToolbar(taskMode: TaskCompletionMode, actions: NoteEditorActions) {
+private fun EditorToolbar(
+    taskMode: TaskCompletionMode,
+    actions: NoteEditorActions,
+    recording: Boolean,
+    onMic: () -> Unit,
+) {
     // Scrolls sideways so it fits a narrow floating window.
     Row(
         modifier = Modifier
@@ -189,6 +205,11 @@ private fun EditorToolbar(taskMode: TaskCompletionMode, actions: NoteEditorActio
         horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        PillButton(
+            text = stringResource(if (recording) R.string.voice_stop else R.string.voice_record),
+            onClick = onMic,
+            selected = recording,
+        )
         PillButton(stringResource(R.string.block_text), { actions.onChangeType(BlockType.Text) })
         PillButton(stringResource(R.string.block_checklist), { actions.onChangeType(BlockType.Checklist) })
         PillButton(stringResource(R.string.block_task), { actions.onChangeType(BlockType.Task) })

@@ -1,10 +1,15 @@
 package com.bufferbrew.floatnote
 
+import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,24 +24,45 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import com.bufferbrew.floatnote.overlay.OverlayService
 import com.bufferbrew.floatnote.overlay.openFloatingNote
 import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.editor.NoteEditorContent
 import com.bufferbrew.floatnote.ui.list.NoteListContent
+import com.bufferbrew.floatnote.ui.settings.SettingsContent
 import com.bufferbrew.floatnote.ui.theme.Dimens
 import com.bufferbrew.floatnote.ui.theme.FloatNoteTheme
+import com.bufferbrew.floatnote.voice.AppVoiceActions
+import com.bufferbrew.floatnote.voice.AutoRecordEffect
+import com.bufferbrew.floatnote.voice.hasMicPermission
 
 class MainActivity : ComponentActivity() {
 
-    private val session get() = (application as FloatNoteApp).session
+    private val app get() = application as FloatNoteApp
+    private val session get() = app.session
+
+    private var showSettings by mutableStateOf(false)
+    private var micGranted by mutableStateOf(false)
+
+    private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        micGranted = it
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        micGranted = hasMicPermission()
+        showSettings = intent.getBooleanExtra(EXTRA_SETTINGS, false)
+        askForMicOnce()
+
         setContent {
+            val voiceActions = remember { AppVoiceActions(this) }
             FloatNoteTheme {
                 Surface(Modifier.fillMaxSize()) {
                     val contentModifier = Modifier
@@ -44,45 +70,75 @@ class MainActivity : ComponentActivity() {
                         .imePadding()
                         .padding(horizontal = Dimens.SpaceM)
                     val note = session.note
-                    if (note == null) {
-                        val notes by session.notes.collectAsState(initial = emptyList())
-                        Column(contentModifier) {
-                            Row(Modifier.padding(top = Dimens.SpaceS)) {
-                                Spacer(Modifier.weight(1f))
-                                FloatButton()
-                            }
-                            NoteListContent(
-                                notes = notes,
-                                onOpen = session::open,
-                                onCreate = session::createNote,
-                                onDelete = session::deleteNote,
-                                modifier = Modifier.weight(1f),
+                    AutoRecordEffect(note?.id)
+                    when {
+                        showSettings -> {
+                            BackHandler { showSettings = false }
+                            SettingsContent(
+                                settings = app.voiceSettings,
+                                micGranted = micGranted,
+                                onRequestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) },
+                                onBack = { showSettings = false },
+                                modifier = contentModifier,
                             )
                         }
-                    } else {
-                        BackHandler { session.closeNote() }
-                        Column(contentModifier) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = session::closeNote) {
-                                    Text(
-                                        stringResource(R.string.back_to_notes),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                        note == null -> {
+                            val notes by session.notes.collectAsState(initial = emptyList())
+                            Column(contentModifier) {
+                                Row(
+                                    Modifier.padding(top = Dimens.SpaceS),
+                                    horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
+                                ) {
+                                    Spacer(Modifier.weight(1f))
+                                    PillButton(stringResource(R.string.settings), { showSettings = true })
+                                    FloatButton()
                                 }
-                                Spacer(Modifier.weight(1f))
-                                FloatButton()
+                                NoteListContent(
+                                    notes = notes,
+                                    onOpen = session::open,
+                                    onCreate = session::createNote,
+                                    onDelete = session::deleteNote,
+                                    modifier = Modifier.weight(1f),
+                                )
                             }
-                            NoteEditorContent(
-                                note = note,
-                                pendingFocus = session.pendingFocus,
-                                actions = session,
-                                modifier = Modifier.weight(1f),
-                            )
+                        }
+                        else -> {
+                            BackHandler { session.closeNote() }
+                            Column(contentModifier) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = session::closeNote) {
+                                        Text(
+                                            stringResource(R.string.back_to_notes),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                    FloatButton()
+                                }
+                                NoteEditorContent(
+                                    note = note,
+                                    pendingFocus = session.pendingFocus,
+                                    actions = session,
+                                    voiceState = app.voice.state,
+                                    voiceActions = voiceActions,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_SETTINGS, false)) showSettings = true
+    }
+
+    override fun onResume() {
+        super.onResume()
+        micGranted = hasMicPermission()
     }
 
     /** Hands the open note to the floating window and steps out of the way. */
@@ -95,9 +151,30 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    // The process can be killed any time after this, so don't wait for the save debounce.
+    /** Voice is on by default, so ask for the mic up front, but only the first time. */
+    private fun askForMicOnce() {
+        val prefs = getSharedPreferences("main", Context.MODE_PRIVATE)
+        if (micGranted || prefs.getBoolean(KEY_ASKED_MIC, false)) return
+        prefs.edit().putBoolean(KEY_ASKED_MIC, true).apply()
+        requestMic.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
     override fun onStop() {
         super.onStop()
+        // In the background only the overlay's foreground service may use the mic, so without
+        // it the recording would go silent: finish and send it now instead.
+        if (!OverlayService.isRunning) app.voice.stop()
+        // The process can be killed any time after this, so don't wait for the save debounce.
         session.flush()
+    }
+
+    companion object {
+        private const val EXTRA_SETTINGS = "open_settings"
+        private const val KEY_ASKED_MIC = "asked_mic"
+
+        fun settingsIntent(context: Context): Intent =
+            Intent(context, MainActivity::class.java)
+                .putExtra(EXTRA_SETTINGS, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
     }
 }

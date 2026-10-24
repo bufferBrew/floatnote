@@ -82,6 +82,8 @@ object Dimens {
     val GrabberWidth = 36.dp
     val GrabberHeight = 4.dp
     val WaveBarWidth = 3.dp
+    val WaveMaxHeight = 24.dp
+    val BubbleWaveMaxHeight = 22.dp
 }
 
 @Composable

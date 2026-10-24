@@ -141,7 +141,21 @@ class NoteViewModel(
 
     override fun onTaskModeChange(mode: TaskCompletionMode) = edit { editor.setTaskMode(it, mode) }
 
-    fun onTranscript(text: String) = edit { editor.appendTranscript(it, text) }
+    /**
+     * Adds transcribed speech to [noteId]. Usually that's the open note; if the user has moved
+     * on, it's written straight to storage. A note deleted as blank while the transcript was in
+     * flight is recreated, so speech is never lost.
+     */
+    fun addTranscript(noteId: String, text: String) {
+        if (note?.id == noteId) {
+            edit { editor.appendTranscript(it, text) }
+            return
+        }
+        persist {
+            val base = repository.load(noteId) ?: Note(id = noteId)
+            repository.save(editor.appendTranscript(base, text))
+        }
+    }
 
     override fun onFocusChanged(blockId: String, focused: Boolean) {
         if (focused) focusedBlockId = blockId
