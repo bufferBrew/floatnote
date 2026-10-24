@@ -1,5 +1,6 @@
 package com.bufferbrew.floatnote.voice
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -32,9 +33,12 @@ class VoiceControllerTest {
 
     private class FakeTranscriber : Transcriber {
         var reply: () -> String = { "hello world" }
+        /** When set, transcribe() suspends until this completes, like a slow network. */
+        var gate: CompletableDeferred<Unit>? = null
         val sent = mutableListOf<File>()
         override suspend fun transcribe(audio: File, config: WhisperConfig): String {
             sent += audio
+            gate?.await()
             return reply()
         }
     }
@@ -260,5 +264,62 @@ class VoiceControllerTest {
         voice.start("n")
         scope.advanceTimeBy(10_050)
         assertTrue(live.stopped)
+    }
+
+    @Test
+    fun `cancelling a slow upload frees the UI and keeps the audio for retry`() {
+        transcriber.gate = CompletableDeferred()
+        voice.start("n")
+        scope.advanceTimeBy(200)
+        voice.stop()
+        scope.runCurrent()
+        assertEquals(VoiceState.Transcribing, voice.state)
+
+        voice.cancel()
+        val error = voice.state as VoiceState.Error
+        assertTrue(error.canRetry)
+        val clip = transcriber.sent.single()
+        assertTrue(clip.exists())
+
+        transcriber.gate = null
+        voice.retry()
+        scope.runCurrent()
+        assertEquals(listOf("n" to "hello world"), transcripts)
+        assertEquals(listOf(clip, clip), transcriber.sent)
+    }
+
+    @Test
+    fun `a new recording can start right after cancelling an upload`() {
+        transcriber.gate = CompletableDeferred()
+        voice.start("n")
+        voice.stop()
+        scope.runCurrent()
+        voice.cancel()
+        voice.dismiss()
+        voice.start("n")
+        assertTrue(voice.isRecording)
+    }
+
+    @Test
+    fun `cancelling a recording drops it without uploading`() {
+        voice.start("n")
+        scope.advanceTimeBy(300)
+        voice.cancel()
+        scope.runCurrent()
+        assertEquals(VoiceState.Idle, voice.state)
+        assertTrue(transcriber.sent.isEmpty())
+        assertTrue(dir.listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun `cancelling a device session that is finishing ends it at once`() {
+        engine = VoiceEngine.Device
+        live.answersStop = false
+        voice.start("n")
+        voice.stop()
+        assertEquals(VoiceState.Transcribing, voice.state)
+        voice.cancel()
+        assertTrue(live.cancelled)
+        assertEquals(VoiceState.Idle, voice.state)
     }
 }

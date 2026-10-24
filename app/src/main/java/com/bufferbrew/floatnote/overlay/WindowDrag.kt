@@ -16,10 +16,16 @@ import kotlin.math.hypot
  * the finger shifts those coordinates by the same amount, which halves or cancels the drag and
  * makes the window jitter. Screen coordinates (`rawX`/`rawY`) don't move with the window, so
  * this reads the MotionEvent directly.
+ *
+ * [onDrag] gets the *total* offset since the finger went down, not a per-event step. The caller
+ * places the window at (position at [onDragStart] + offset), clamped. Adding up steps instead
+ * lets the finger and window drift apart once the window is stopped by a screen edge, which
+ * feels like the window is stuck.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun Modifier.windowDrag(
-    onDrag: (dx: Int, dy: Int) -> Unit,
+    onDragStart: () -> Unit,
+    onDrag: (totalDx: Int, totalDy: Int) -> Unit,
     onDragEnd: () -> Unit = {},
     onTap: (() -> Unit)? = null,
 ): Modifier = composed {
@@ -37,16 +43,10 @@ fun Modifier.windowDrag(
                     hypot(event.rawX - track.downX, event.rawY - track.downY) > touchSlop
                 ) {
                     track.dragging = true
+                    onDragStart()
                 }
                 if (track.dragging) {
-                    val dx = (event.rawX - track.lastX).toInt()
-                    val dy = (event.rawY - track.lastY).toInt()
-                    if (dx != 0 || dy != 0) {
-                        onDrag(dx, dy)
-                        // Advance only by the whole pixels used, so fractions aren't lost.
-                        track.lastX += dx
-                        track.lastY += dy
-                    }
+                    onDrag((event.rawX - track.downX).toInt(), (event.rawY - track.downY).toInt())
                 }
                 true
             }
@@ -66,15 +66,11 @@ fun Modifier.windowDrag(
 private class DragTracker {
     var downX = 0f
     var downY = 0f
-    var lastX = 0f
-    var lastY = 0f
     var dragging = false
 
     fun down(x: Float, y: Float) {
         downX = x
         downY = y
-        lastX = x
-        lastY = y
         dragging = false
     }
 }

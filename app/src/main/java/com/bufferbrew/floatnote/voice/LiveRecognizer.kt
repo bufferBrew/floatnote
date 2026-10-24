@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -56,6 +57,36 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
     private val handler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var reconnects = 0
+
+    /** Last time the service said anything (levels arrive several times a second while listening). */
+    private var lastHeardAt = 0L
+
+    /**
+     * A recognition service can die without calling back. If it's been silent for
+     * [WATCHDOG_MS] while we expect it to be listening, rebuild it rather than sit on
+     * "Listening" forever.
+     */
+    private val watchdog = object : Runnable {
+        override fun run() {
+            if (!active) return
+            if (SystemClock.elapsedRealtime() - lastHeardAt > WATCHDOG_MS) {
+                Log.w(TAG, "speech service went silent; reconnecting")
+                if (stopping) {
+                    finish()
+                    return
+                }
+                if (reconnects >= MAX_RECONNECTS) {
+                    fail("The phone's speech service stopped responding. Try again, or switch to Whisper in Settings.")
+                    return
+                }
+                reconnects++
+                lastHeardAt = SystemClock.elapsedRealtime()
+                rebuild()
+                startListening()
+            }
+            handler.postDelayed(this, WATCHDOG_CHECK_MS)
+        }
+    }
     private var listener: LiveRecognizer.Listener? = null
     private var language = ""
     private var active = false
@@ -74,7 +105,9 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
             active = false
             throw IllegalStateException("No speech recognizer on this phone")
         }
+        lastHeardAt = SystemClock.elapsedRealtime()
         listen()
+        handler.postDelayed(watchdog, WATCHDOG_CHECK_MS)
     }
 
     override fun stop() {
@@ -149,21 +182,25 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
 
     private val callbacks = object : RecognitionListener {
         override fun onRmsChanged(rmsdB: Float) {
+            lastHeardAt = SystemClock.elapsedRealtime()
             // Typical range is about -2 dB (silence) to 10 dB (loud speech).
             listener?.onLevel(((rmsdB + 2f) / 12f).coerceIn(0f, 1f))
         }
 
         override fun onPartialResults(partialResults: Bundle?) {
+            lastHeardAt = SystemClock.elapsedRealtime()
             best(partialResults)?.let { listener?.onPartial(it) }
         }
 
         override fun onResults(results: Bundle?) {
+            lastHeardAt = SystemClock.elapsedRealtime()
             reconnects = 0
             best(results)?.takeIf { it.isNotBlank() }?.let { listener?.onSegment(it.trim()) }
             continueOrFinish()
         }
 
         override fun onError(error: Int) {
+            lastHeardAt = SystemClock.elapsedRealtime()
             Log.d(TAG, "recognizer error $error (onDevice=$usingOnDevice, stopping=$stopping)")
             when (error) {
                 // Silence or nothing understood: not a failure in dictation, just keep listening.
@@ -195,7 +232,9 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
             }
         }
 
-        override fun onReadyForSpeech(params: Bundle?) = Unit
+        override fun onReadyForSpeech(params: Bundle?) {
+            lastHeardAt = SystemClock.elapsedRealtime()
+        }
         override fun onBeginningOfSpeech() = Unit
         override fun onBufferReceived(buffer: ByteArray?) = Unit
         override fun onEndOfSpeech() = Unit
@@ -216,5 +255,7 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
         const val TAG = "FloatNoteVoice"
         const val RESTART_DELAY_MS = 150L
         const val MAX_RECONNECTS = 3
+        const val WATCHDOG_MS = 8_000L
+        const val WATCHDOG_CHECK_MS = 2_000L
     }
 }

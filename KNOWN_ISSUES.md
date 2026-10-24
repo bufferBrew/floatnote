@@ -81,3 +81,9 @@
 - Ceiling (when this breaks): the phone's recognizer refusing to run while another app is in front, or having no offline model for the chosen language.
 - Upgrade trigger (what to do when it's hit): pick "This phone" in Settings, dictate from the floating window over another app, and read the log.
 - Status: open
+
+## 2026-10-24 — Guards against the app getting stuck
+- What changed / what shortcut was taken: user reported the app "gets stuck at times". No crash or ANR was in the phone's log, so the fixes target every wait that could look frozen: Whisper uploads now have a 90 s overall limit and a Cancel button (audio kept for Retry); the device recognizer has an 8 s watchdog that reconnects a silent speech service (max 3 times in a row); window drags are measured from the drag start so the window can't fall out of step with the finger at a screen edge; the panel defaults to small (260×300 dp) so it covers less of the app underneath.
+- Ceiling (when this breaks): a stuck state not covered above.
+- Upgrade trigger (what to do when it's hit): ask what was on screen when it stuck, capture `adb logcat` (tag FloatNoteVoice) and `dumpsys window`, and add a guard for that case.
+- Status: open (watching for reports)

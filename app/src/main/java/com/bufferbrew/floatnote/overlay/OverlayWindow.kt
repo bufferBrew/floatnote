@@ -47,6 +47,9 @@ class OverlayWindow(
     private val voiceActions = AppVoiceActions(context, beforeOpeningScreen = { minimise() })
 
     private var mode by mutableStateOf(OverlayMode.Panel)
+
+    /** The preset the panel currently matches, for highlighting; null after a custom resize. */
+    private var panelPreset by mutableStateOf<PanelSize?>(null)
     private var opacity by mutableFloatStateOf(prefs.opacity)
     private var focusable = true
 
@@ -58,6 +61,12 @@ class OverlayWindow(
     private var bubble = (prefs.bubble ?: defaultBubble())
         .copy(width = bubbleWidth, height = bubbleHeight)
         .clampedTo(usableArea())
+
+    init {
+        panelPreset = PanelSize.entries.firstOrNull {
+            dp(it.widthDp) == panel.width && dp(it.heightDp) == panel.height
+        }
+    }
 
     private val params = WindowManager.LayoutParams(
         WindowManager.LayoutParams.WRAP_CONTENT,
@@ -134,6 +143,7 @@ class OverlayWindow(
                 OverlayMode.Bubble -> OverlayBubble(
                     voiceState = voice.state,
                     onTap = ::expand,
+                    onDragStart = { dragOrigin = bubble },
                     onDrag = { dx, dy -> moveBubble(dx, dy) },
                     onDragEnd = { prefs.bubble = bubble },
                 )
@@ -142,8 +152,11 @@ class OverlayWindow(
                     voiceState = voice.state,
                     voiceActions = voiceActions,
                     opacity = opacity,
+                    panelSize = panelPreset,
+                    onPanelSize = ::applyPanelSize,
                     onOpacityChange = ::changeOpacity,
                     onOpacityChangeFinished = { prefs.opacity = opacity },
+                    onGeometryStart = { dragOrigin = panel },
                     onMove = { dx, dy -> movePanel(dx, dy) },
                     onResize = { dx, dy -> resizePanel(dx, dy) },
                     onGeometryDone = { prefs.panel = panel },
@@ -154,23 +167,38 @@ class OverlayWindow(
         }
     }
 
+    /** Keeps the top-left corner where it is (pulled back on screen if needed). */
+    private fun applyPanelSize(size: PanelSize) {
+        panel = panel.copy(width = dp(size.widthDp), height = dp(size.heightDp)).clampedTo(usableArea())
+        panelPreset = size
+        prefs.panel = panel
+        update()
+    }
+
     private fun changeOpacity(value: Float) {
         opacity = value.coerceIn(OverlayPrefs.MIN_OPACITY, 1f)
         update()
     }
 
+    /** Where the window was when the current drag began; drags are offsets from here. */
+    private var dragOrigin: WindowRect? = null
+
     private fun movePanel(dx: Int, dy: Int) {
-        panel = panel.movedBy(dx, dy).clampedTo(usableArea())
+        val origin = dragOrigin ?: panel
+        panel = origin.movedBy(dx, dy).clampedTo(usableArea())
         update()
     }
 
     private fun resizePanel(dx: Int, dy: Int) {
-        panel = panel.resizedBy(dx, dy, dp(MIN_PANEL_WIDTH_DP), dp(MIN_PANEL_HEIGHT_DP), usableArea())
+        val origin = dragOrigin ?: panel
+        panel = origin.resizedBy(dx, dy, dp(MIN_PANEL_WIDTH_DP), dp(MIN_PANEL_HEIGHT_DP), usableArea())
+        panelPreset = null
         update()
     }
 
     private fun moveBubble(dx: Int, dy: Int) {
-        bubble = bubble.movedBy(dx, dy).clampedTo(usableArea())
+        val origin = dragOrigin ?: bubble
+        bubble = origin.movedBy(dx, dy).clampedTo(usableArea())
         update()
     }
 
@@ -207,10 +235,11 @@ class OverlayWindow(
      */
     private fun defaultPanel(): WindowRect {
         val area = usableArea()
-        val width = (area.width * 0.9f).toInt().coerceAtMost(dp(420))
-        val height = (area.height * 0.45f).toInt()
-        val top = area.y + (area.height * 0.05f).toInt()
-        return WindowRect(area.x + (area.width - width) / 2, top, width, height)
+        val width = dp(DEFAULT_SIZE.widthDp)
+        val height = dp(DEFAULT_SIZE.heightDp)
+        val top = area.y + (area.height * 0.08f).toInt()
+        // Top right, small: out of the way of whatever app is underneath.
+        return WindowRect(area.right - width - dp(12), top, width, height)
     }
 
     private fun defaultBubble(): WindowRect {
@@ -242,6 +271,7 @@ class OverlayWindow(
     ).toInt()
 
     private companion object {
+        val DEFAULT_SIZE = PanelSize.Small
         const val MIN_PANEL_WIDTH_DP = 220
         const val MIN_PANEL_HEIGHT_DP = 200
         const val BUBBLE_WIDTH_DP = 64

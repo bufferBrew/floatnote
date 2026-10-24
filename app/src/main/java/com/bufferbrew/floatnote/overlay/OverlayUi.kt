@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.overlay.OverlayPrefs.Companion.MIN_OPACITY
 import com.bufferbrew.floatnote.ui.components.CircleButton
+import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.editor.NoteEditorContent
 import com.bufferbrew.floatnote.ui.editor.NoteViewModel
 import com.bufferbrew.floatnote.ui.list.NoteListContent
@@ -70,6 +71,7 @@ private const val BubbleBars = 5
 fun OverlayBubble(
     voiceState: VoiceState,
     onTap: () -> Unit,
+    onDragStart: () -> Unit,
     onDrag: (Int, Int) -> Unit,
     onDragEnd: () -> Unit,
 ) {
@@ -80,7 +82,7 @@ fun OverlayBubble(
             .clip(CircleShape)
             .background(BubbleColors.Fill)
             .border(Dimens.Hairline, BubbleColors.Edge, CircleShape)
-            .windowDrag(onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap)
+            .windowDrag(onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap)
             .semantics {
                 role = Role.Button
                 contentDescription = label
@@ -131,16 +133,19 @@ fun OverlayPanel(
     session: NoteViewModel,
     voiceState: VoiceState,
     voiceActions: VoiceActions,
+    panelSize: PanelSize?,
+    onPanelSize: (PanelSize) -> Unit,
     opacity: Float,
     onOpacityChange: (Float) -> Unit,
     onOpacityChangeFinished: () -> Unit,
+    onGeometryStart: () -> Unit,
     onMove: (Int, Int) -> Unit,
     onResize: (Int, Int) -> Unit,
     onGeometryDone: () -> Unit,
     onMinimise: () -> Unit,
     onClose: () -> Unit,
 ) {
-    var showOpacity by remember { mutableStateOf(false) }
+    var showAdjust by remember { mutableStateOf(false) }
     val note = session.note
     val shape = RoundedCornerShape(Dimens.CornerL)
 
@@ -162,13 +167,15 @@ fun OverlayPanel(
                 PanelHeader(
                     title = note?.title?.ifBlank { stringResource(R.string.untitled) }
                         ?: stringResource(R.string.notes_title),
+                    onMoveStart = onGeometryStart,
                     onMove = onMove,
                     onMoveEnd = onGeometryDone,
-                    onToggleOpacity = { showOpacity = !showOpacity },
+                    onToggleAdjust = { showAdjust = !showAdjust },
                     onMinimise = onMinimise,
                     onClose = onClose,
                 )
-                if (showOpacity) {
+                if (showAdjust) {
+                    SizeRow(panelSize, onPanelSize)
                     OpacityRow(opacity, onOpacityChange, onOpacityChangeFinished)
                 }
                 val bodyModifier = Modifier.weight(1f).fillMaxWidth()
@@ -200,7 +207,7 @@ fun OverlayPanel(
                     }
                 }
             }
-            ResizeHandle(onResize, onGeometryDone, Modifier.align(Alignment.BottomEnd))
+            ResizeHandle(onGeometryStart, onResize, onGeometryDone, Modifier.align(Alignment.BottomEnd))
         }
     }
 }
@@ -208,9 +215,10 @@ fun OverlayPanel(
 @Composable
 private fun PanelHeader(
     title: String,
+    onMoveStart: () -> Unit,
     onMove: (Int, Int) -> Unit,
     onMoveEnd: () -> Unit,
-    onToggleOpacity: () -> Unit,
+    onToggleAdjust: () -> Unit,
     onMinimise: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -220,7 +228,7 @@ private fun PanelHeader(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .windowDrag(onDrag = onMove, onDragEnd = onMoveEnd)
+                .windowDrag(onDragStart = onMoveStart, onDrag = onMove, onDragEnd = onMoveEnd)
                 .semantics { contentDescription = moveLabel }
                 .padding(top = Dimens.SpaceS, bottom = Dimens.SpaceXs),
         ) {
@@ -238,9 +246,37 @@ private fun PanelHeader(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        CircleButton("◐", stringResource(R.string.opacity), onToggleOpacity)
+        CircleButton("◐", stringResource(R.string.adjust_window), onToggleAdjust)
         CircleButton("–", stringResource(R.string.minimise), onMinimise)
         CircleButton("✕", stringResource(R.string.close_floating), onClose)
+    }
+}
+
+@Composable
+private fun SizeRow(current: PanelSize?, onSize: (PanelSize) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = Dimens.SpaceXs),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.panel_size),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        PanelSize.entries.forEach { size ->
+            PillButton(
+                text = stringResource(
+                    when (size) {
+                        PanelSize.Small -> R.string.size_small
+                        PanelSize.Medium -> R.string.size_medium
+                        PanelSize.Large -> R.string.size_large
+                    }
+                ),
+                onClick = { onSize(size) },
+                selected = size == current,
+            )
+        }
     }
 }
 
@@ -266,12 +302,17 @@ private fun OpacityRow(opacity: Float, onChange: (Float) -> Unit, onChangeFinish
 }
 
 @Composable
-private fun ResizeHandle(onResize: (Int, Int) -> Unit, onResizeEnd: () -> Unit, modifier: Modifier) {
+private fun ResizeHandle(
+    onResizeStart: () -> Unit,
+    onResize: (Int, Int) -> Unit,
+    onResizeEnd: () -> Unit,
+    modifier: Modifier,
+) {
     val label = stringResource(R.string.resize_window)
     Box(
         modifier = modifier
             .size(Dimens.HeaderButton)
-            .windowDrag(onDrag = onResize, onDragEnd = onResizeEnd)
+            .windowDrag(onDragStart = onResizeStart, onDrag = onResize, onDragEnd = onResizeEnd)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.BottomEnd,
     ) {

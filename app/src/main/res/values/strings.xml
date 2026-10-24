@@ -21,7 +21,11 @@
     <string name="open_floating_note">Open floating note</string>
     <string name="move_window">Drag to move</string>
     <string name="resize_window">Drag to resize</string>
-    <string name="opacity">Opacity</string>
+    <string name="adjust_window">Size and opacity</string>
+    <string name="panel_size">Size</string>
+    <string name="size_small">S</string>
+    <string name="size_medium">M</string>
+    <string name="size_large">L</string>
     <string name="opacity_value">Opacity %1$d%%</string>
     <string name="minimise">Minimise</string>
     <string name="close_floating">Close floating note</string>

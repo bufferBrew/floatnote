@@ -14,9 +14,16 @@ class OverlayPrefs(context: Context) {
         get() = prefs.getFloat(KEY_OPACITY, 1f).coerceIn(MIN_OPACITY, 1f)
         set(value) = prefs.edit().putFloat(KEY_OPACITY, value).apply()
 
+    /**
+     * Saved panel geometry. Geometry saved before the size presets existed (layout version 1) is
+     * ignored once, so panels that were too big start over at the small default.
+     */
     var panel: WindowRect?
-        get() = readRect("panel")
-        set(value) = writeRect("panel", value)
+        get() = if (prefs.getInt(KEY_LAYOUT_VERSION, 1) < LAYOUT_VERSION) null else readRect("panel")
+        set(value) {
+            writeRect("panel", value)
+            prefs.edit().putInt(KEY_LAYOUT_VERSION, LAYOUT_VERSION).apply()
+        }
 
     var bubble: WindowRect?
         get() = readRect("bubble")
@@ -49,5 +56,7 @@ class OverlayPrefs(context: Context) {
         /** Below this the panel is too faint to read or find. */
         const val MIN_OPACITY = 0.3f
         private const val KEY_OPACITY = "opacity"
+        private const val KEY_LAYOUT_VERSION = "layout_version"
+        private const val LAYOUT_VERSION = 2
     }
 }

@@ -73,6 +73,10 @@ class VoiceController(
     private var liveLevel = 0f
     private var finishTimeout: Job? = null
 
+    /** The upload in flight, and what to keep if it's cancelled. */
+    private var upload: Job? = null
+    private var uploading: Pair<File, String>? = null
+
     fun start(noteId: String) {
         if (state is VoiceState.Recording || state is VoiceState.Transcribing) return
         if (engine() == VoiceEngine.Device) {
@@ -210,6 +214,39 @@ class VoiceController(
         transcribe(file, noteId)
     }
 
+    /**
+     * Gives up on whatever is in progress so the UI is never stuck waiting. A cancelled upload
+     * keeps its audio for [retry]; the device engine just ends (its sentences are already saved).
+     */
+    fun cancel() {
+        when {
+            liveNote != null -> {
+                liveRecognizer.cancel()
+                endLive(VoiceState.Idle)
+            }
+            state is VoiceState.Transcribing -> {
+                upload?.cancel()
+                upload = null
+                pending = uploading
+                uploading = null
+                state = if (pending != null) {
+                    VoiceState.Error("Transcription cancelled. Retry to send the same recording.", canRetry = true)
+                } else {
+                    VoiceState.Idle
+                }
+            }
+            state is VoiceState.Recording -> {
+                sampler?.cancel()
+                sampler = null
+                recorder.stop()
+                recordingFile?.delete()
+                recordingFile = null
+                recordingNote = null
+                state = VoiceState.Idle
+            }
+        }
+    }
+
     /** Clears an error. A kept recording is thrown away. */
     fun dismiss() {
         if (state !is VoiceState.Error) return
@@ -229,7 +266,8 @@ class VoiceController(
             return
         }
         state = VoiceState.Transcribing
-        scope.launch {
+        uploading = file to noteId
+        upload = scope.launch {
             try {
                 val text = transcriber.transcribe(file, cfg)
                 file.delete()
@@ -238,6 +276,9 @@ class VoiceController(
             } catch (e: TranscriptionException) {
                 pending = file to noteId
                 state = VoiceState.Error(e.message ?: "Transcription failed.", canRetry = true)
+            } finally {
+                uploading = null
+                upload = null
             }
         }
     }

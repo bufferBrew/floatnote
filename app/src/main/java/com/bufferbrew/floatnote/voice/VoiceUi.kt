@@ -44,6 +44,7 @@ import com.bufferbrew.floatnote.ui.theme.Dimens
 interface VoiceActions {
     fun onMicToggle()
     fun onRetry()
+    fun onCancel()
     fun onOpenSettings()
     fun onDismiss()
 }
@@ -76,6 +77,8 @@ class AppVoiceActions(
     }
 
     override fun onRetry() = app.voice.retry()
+
+    override fun onCancel() = app.voice.cancel()
 
     override fun onOpenSettings() {
         beforeOpeningScreen()
@@ -150,12 +153,16 @@ fun VoiceStatus(state: VoiceState, actions: VoiceActions, modifier: Modifier = M
                     )
                 }
             }
-            VoiceState.Transcribing -> Text(
-                stringResource(R.string.voice_transcribing),
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = Dimens.SpaceXs),
-            )
+            VoiceState.Transcribing -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.voice_transcribing),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                // Always a way out, so the panel never looks stuck on a slow connection.
+                TextButton(onClick = actions::onCancel) { Text(stringResource(R.string.cancel)) }
+            }
             is VoiceState.Error -> {
                 Text(state.message, style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {

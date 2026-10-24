@@ -65,9 +65,11 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
     focus hand-off, opacity (`LayoutParams.alpha`), move/resize, and saves geometry via `OverlayPrefs`.
   - `OverlayUi.kt`: `OverlayBubble` and `OverlayPanel`. The panel hosts the same
     `NoteListContent` / `NoteEditorContent` as the full app.
-  - `WindowDrag.kt`: drag/tap using raw screen coordinates. Use it for anything that moves
+  - `WindowDrag.kt`: drag/tap using raw screen coordinates, reported as the total offset since
+    the drag started (the window is placed at start + offset, never stepped). Use it for anything that moves
     the window; Compose drag gestures jitter because the window moves under the finger.
-  - `WindowGeometry.kt`: pure clamp/resize maths, unit-tested.
+  - `WindowGeometry.kt`: pure clamp/resize maths, unit-tested, plus `PanelSize` presets
+    (S/M/L; default Small). The panel's ◐ button shows size chips and the opacity slider.
 - `FloatLaunchActivity`: the "Float note" launcher entry for the Edge panel. No UI. Also asks
   for the mic on the overlay's behalf (`requestMicIntent`), since a Service can't.
 - `voice/`: voice notes.
