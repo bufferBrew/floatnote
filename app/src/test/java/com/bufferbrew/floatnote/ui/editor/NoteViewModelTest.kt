@@ -376,4 +376,49 @@ class NoteViewModelTest {
         assertEquals("gone", saved.id)
         assertEquals(listOf("rescued words"), saved.blocks.map { it.text })
     }
+
+    @Test
+    fun `dictation that lands after the note was deleted doesn't bring it back`() {
+        val vm = viewModel()
+        vm.deleteNote("n")
+        scope.runCurrent()
+        vm.addTranscript("n", "late words")
+        scope.runCurrent()
+        assertTrue(repository.saved.isEmpty())
+        assertNull(vm.note)
+    }
+
+    @Test
+    fun `after undoing a delete, dictation reaches the note again`() {
+        val vm = viewModel()
+        vm.closeNote()
+        scope.runCurrent()
+        vm.deleteNote("n")
+        scope.runCurrent()
+        vm.undoDelete()
+        vm.addTranscript("n", "after undo")
+        scope.runCurrent()
+        assertEquals("after undo", repository.saved.last().blocks.last().text)
+    }
+
+    @Test
+    fun `a load that finishes after a new note was created is dropped`() {
+        val vm = viewModel()
+        vm.closeNote()
+        vm.open("n")
+        vm.createNote() // before the load above has run
+        val created = vm.note
+        scope.runCurrent()
+        assertEquals(created, vm.note)
+    }
+
+    @Test
+    fun `a load that finishes after going back to the list doesn't reopen the note`() {
+        val vm = viewModel()
+        vm.closeNote()
+        vm.open("n")
+        vm.closeNote()
+        scope.runCurrent()
+        assertNull(vm.note)
+    }
 }

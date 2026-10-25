@@ -182,3 +182,9 @@
 - Ceiling (when this breaks): a third-party launcher or edge app that isn't the default home and isn't preinstalled opens the note without auto-recording. Preinstalled apps are trusted as a group.
 - Upgrade trigger (what to do when it's hit): if users of other launchers ask, add a "trusted launchers" list in Settings, or check `getLaunchedFromPackage()` on Android 14+.
 - Status: open
+
+## 2026-10-25 — A clip left by a killed process is offered for Retry, even if it's cut off
+- What changed / what shortcut was taken: clips are named `clip-<time>-<noteId>.m4a`, and `VoiceController` offers the newest leftover one for Retry at startup (older ones are deleted). It can't tell a clip that was uploading (complete) from one cut off mid-recording (MediaRecorder never finished the file).
+- Ceiling (when this breaks): after a kill during recording, Retry sends an unreadable file and Whisper rejects it; the user dismisses the error.
+- Upgrade trigger (what to do when it's hit): rename a clip to `kept-…` once its recording stops, and only restore those.
+- Status: open

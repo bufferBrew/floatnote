@@ -94,4 +94,24 @@ class VoiceSettingsTest {
         assertEquals("sk-old", s.config()!!.apiKey)
         assertFalse(context.getSharedPreferences("voice", Context.MODE_PRIVATE).contains("api_key"))
     }
+
+    @Test
+    fun `a key with a stray character is refused and nothing is saved`() {
+        val s = settings()
+        assertFalse(s.setApiKey("sk-te\u200Bst"))
+        assertFalse(s.setApiKey("sk test"))
+        assertFalse(s.hasApiKey)
+        assertTrue(s.setApiKey("gsk_Abc-123.xyz"))
+        assertTrue(s.hasApiKey)
+    }
+
+    @Test
+    fun `a bad key saved before keys were checked blocks the config instead of crashing later`() {
+        val s = settings()
+        context.getSharedPreferences("voice_secret", Context.MODE_PRIVATE).edit()
+            .putString("api_key", cipher.encrypt("sk-\u201Cquoted\u201D")).commit()
+        assertTrue(s.hasApiKey)
+        assertNull(s.config())
+        assertTrue(s.configProblem()!!.contains("Paste it again"))
+    }
 }

@@ -56,11 +56,16 @@ class ChatClient(
         if (json) payload.put("response_format", JSONObject().put("type", "json_object"))
         val url = (config.baseUrl.trimEnd('/') + "/chat/completions").toHttpUrlOrNull()
             ?: throw AiException(strings.get(R.string.err_invalid_url), needsSettings = true)
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer ${config.apiKey}")
-            .post(payload.toString().toRequestBody(JSON_TYPE))
-            .build()
+        // OkHttp throws on a header value it can't send (say, a key with a stray character).
+        val request = try {
+            Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer ${config.apiKey}")
+                .post(payload.toString().toRequestBody(JSON_TYPE))
+                .build()
+        } catch (e: IllegalArgumentException) {
+            throw AiException(strings.get(R.string.err_key_bad_chars), e, needsSettings = true)
+        }
 
         val response = try {
             http.newCall(request).await()

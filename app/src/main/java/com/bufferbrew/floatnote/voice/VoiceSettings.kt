@@ -115,13 +115,16 @@ class VoiceSettings(context: Context, private val cipher: SecretCipher = Keystor
         secret.edit().putString(KEY_KEY_HOST, hostOf(baseUrl)).apply()
     }
 
-    fun setApiKey(key: String) {
+    /** Saves [key], or removes it when blank. False (nothing saved) if it can't be an API key. */
+    fun setApiKey(key: String): Boolean {
         val trimmed = key.trim()
         if (trimmed.isEmpty()) {
             secret.edit().remove(KEY_API_KEY).remove(KEY_KEY_HOST).apply()
-            return
+            return true
         }
+        if (!isUsableApiKey(trimmed)) return false
         secret.edit().putString(KEY_API_KEY, cipher.encrypt(trimmed)).putString(KEY_KEY_HOST, hostOf(baseUrl)).apply()
+        return true
     }
 
     /**
@@ -137,6 +140,8 @@ class VoiceSettings(context: Context, private val cipher: SecretCipher = Keystor
     /** Why [config] is null, worded for the user; null when it isn't. */
     fun configProblem(): String? = when {
         !hasApiKey -> res.getString(R.string.err_no_key_or_device)
+        // Saved before keys were checked: it would make the HTTP client throw.
+        !isUsableApiKey(storedKey().orEmpty()) -> res.getString(R.string.err_key_bad_chars)
         !baseUrlValid -> res.getString(R.string.err_https_only)
         hostNeedsConfirm -> res.getString(R.string.err_host_changed)
         else -> null
@@ -156,6 +161,12 @@ class VoiceSettings(context: Context, private val cipher: SecretCipher = Keystor
         const val DEFAULT_BASE_URL = "https://api.openai.com/v1"
         const val DEFAULT_MODEL = "whisper-1"
         const val DEFAULT_AI_MODEL = "gpt-4o-mini"
+
+        /**
+         * Printable ASCII with no spaces, like every OpenAI/Groq key. A zero-width space or a
+         * smart quote picked up when copying would otherwise make OkHttp throw building the header.
+         */
+        fun isUsableApiKey(key: String): Boolean = key.isNotEmpty() && key.all { it in '!'..'~' }
 
 
         // "auto_record" was on by default until 2026-10-24; a new key turns it off for everyone.

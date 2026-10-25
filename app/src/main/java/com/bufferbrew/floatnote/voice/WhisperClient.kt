@@ -53,11 +53,16 @@ class WhisperClient(
         // A mistyped server address (no https://) would otherwise throw from url() and crash.
         val url = (config.baseUrl.trimEnd('/') + "/audio/transcriptions").toHttpUrlOrNull()
             ?: throw TranscriptionException(strings.get(R.string.err_invalid_url))
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer ${config.apiKey}")
-            .post(body)
-            .build()
+        // OkHttp throws on a header value it can't send (say, a key with a stray character).
+        val request = try {
+            Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer ${config.apiKey}")
+                .post(body)
+                .build()
+        } catch (e: IllegalArgumentException) {
+            throw TranscriptionException(strings.get(R.string.err_key_bad_chars), e)
+        }
 
         val response = try {
             http.newCall(request).await()

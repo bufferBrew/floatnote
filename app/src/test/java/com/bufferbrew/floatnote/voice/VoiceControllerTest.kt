@@ -404,4 +404,46 @@ class VoiceControllerTest {
         assertTrue(live.cancelled)
         assertEquals(VoiceState.Idle, voice.state)
     }
+
+    private fun restartedVoice() = VoiceController(
+        strings = TestStrings,
+        recorder = recorder,
+        transcriber = transcriber,
+        liveRecognizer = live,
+        engine = { engine },
+        config = { config },
+        language = { "" },
+        audioDir = dir,
+        scope = scope,
+        onTranscript = { id, text, _ -> transcripts += id to text },
+        clock = { scope.testScheduler.currentTime },
+    )
+
+    @Test
+    fun `a clip left by an earlier process is offered for retry, older ones are deleted`() {
+        val older = File(dir, "clip-100-note-a.m4a").apply { writeBytes(byteArrayOf(1)) }
+        val newest = File(dir, "clip-200-note-b.m4a").apply { writeBytes(byteArrayOf(1)) }
+        val legacy = File(dir, "clip-50.m4a").apply { writeBytes(byteArrayOf(1)) }
+        val voice = restartedVoice()
+        assertTrue((voice.state as VoiceState.Error).canRetry)
+        assertFalse(older.exists())
+        assertFalse(legacy.exists())
+        voice.retry()
+        scope.runCurrent()
+        assertEquals(listOf(newest), transcriber.sent)
+        assertEquals(listOf("note-b" to "hello world"), transcripts)
+        assertFalse(newest.exists())
+    }
+
+    @Test
+    fun `a new recording names its clip after the note`() {
+        voice.start("note-c")
+        assertTrue(recorder.recording!!.name.matches(Regex("clip-\\d+-note-c\\.m4a")))
+        voice.cancel()
+    }
+
+    @Test
+    fun `nothing left over means a clean start`() {
+        assertEquals(VoiceState.Idle, restartedVoice().state)
+    }
 }

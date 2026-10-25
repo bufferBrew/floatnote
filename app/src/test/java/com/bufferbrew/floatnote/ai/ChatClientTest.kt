@@ -56,4 +56,13 @@ class ChatClientTest {
             assertTrue(e.needsSettings)
         }
     }
+
+    @Test
+    fun `a key OkHttp can't put in a header is an error that points to settings`() = runTest {
+        val bad = config().copy(apiKey = "sk-\u200Bkey")
+        val error = runCatching { client.complete("system", "user", bad) }.exceptionOrNull()
+        assertTrue(error is AiException)
+        assertTrue((error as AiException).needsSettings)
+        assertEquals(0, server.requestCount)
+    }
 }

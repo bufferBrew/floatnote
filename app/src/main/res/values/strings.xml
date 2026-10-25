@@ -49,6 +49,7 @@
     <string name="engine_whisper_help">Uploads each recording to a Whisper API. Usually more accurate; needs an API key and a connection.</string>
     <string name="settings_api_key">API key (Whisper and AI)</string>
     <string name="settings_api_key_saved">Saved. Type a new key to replace it.</string>
+    <string name="settings_api_key_bad">That isn\'t a valid key: it has a space or a character keys don\'t use. Copy it again.</string>
     <string name="settings_api_key_missing">Not set. Whisper and the AI features need a key; device speech works without one.</string>
     <string name="settings_save_key">Save key</string>
     <string name="settings_remove_key">Remove key</string>
@@ -143,12 +144,14 @@
     <string name="err_host_changed">The server address changed. Confirm in Settings that your key may be sent there.</string>
     <string name="err_mic_busy">Couldn\'t start the microphone. Is another app using it?</string>
     <string name="err_no_recognizer">This phone has no speech recognizer. Switch to Whisper in Settings.</string>
+    <string name="err_kept_from_before">A recording from earlier wasn\'t sent. Retry to send it.</string>
     <string name="err_cancelled_retry">Transcription cancelled. Retry to send the same recording.</string>
     <string name="err_transcription_failed">Transcription failed.</string>
     <string name="err_invalid_url">The server address in Settings isn\'t a valid URL. It should start with https://</string>
     <string name="err_whisper_slow">The transcription service took too long.</string>
     <string name="err_whisper_unreachable">Couldn\'t reach the transcription service. Check your connection.</string>
     <string name="err_whisper_bad_reply">Unexpected reply from the transcription service.</string>
+    <string name="err_key_bad_chars">The saved API key has a space or a character keys don\'t use, often picked up when copying. Paste it again in Settings.</string>
     <string name="err_key_rejected">The API key was rejected. Check it in Settings.</string>
     <string name="err_whisper_404">Transcription endpoint not found. Check the server address and model in Settings.</string>
     <string name="err_too_long">The recording is too long to upload.</string>

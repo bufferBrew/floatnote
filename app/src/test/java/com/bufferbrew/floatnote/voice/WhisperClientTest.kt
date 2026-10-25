@@ -98,4 +98,15 @@ class WhisperClientTest {
         fail("expected TranscriptionException")
         return ""
     }
+
+    @Test
+    fun `a key OkHttp can't put in a header is an error, not a crash`() = runTest {
+        try {
+            client.transcribe(audio, config().copy(apiKey = "sk-\u200Bkey"))
+            fail("expected TranscriptionException")
+        } catch (e: TranscriptionException) {
+            assertTrue(e.message.orEmpty().contains("Paste it again"))
+        }
+        assertEquals(0, server.requestCount)
+    }
 }

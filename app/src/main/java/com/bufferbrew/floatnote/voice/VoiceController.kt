@@ -104,6 +104,24 @@ class VoiceController(
     private var upload: Job? = null
     private var uploading: Pair<File, String>? = null
 
+    init {
+        restoreKept()
+    }
+
+    /**
+     * A clip a previous process left behind (killed while uploading, or before Retry) is offered
+     * for Retry again instead of sitting in the cache forever. Only the newest is kept.
+     */
+    private fun restoreKept() {
+        val clips = audioDir.listFiles().orEmpty().filter { it.name.startsWith(CLIP_PREFIX) }
+        val newest = clips.mapNotNull { file -> CLIP_NAME.matchEntire(file.name)?.let { file to it } }
+            .maxByOrNull { (_, match) -> match.groupValues[1].toLong() }
+        clips.filter { it != newest?.first }.forEach { it.delete() }
+        if (newest == null) return
+        pending = newest.first to newest.second.groupValues[2]
+        state = VoiceState.Error(strings.get(R.string.err_kept_from_before), canRetry = true)
+    }
+
     fun start(noteId: String) {
         if (state is VoiceState.Recording || state is VoiceState.Transcribing) return
         if (engine() == VoiceEngine.Device) {
@@ -118,7 +136,8 @@ class VoiceController(
             return
         }
         discardPending()
-        val file = File(audioDir, "clip-${clock()}.m4a")
+        // The note id in the name lets a later process offer the clip for Retry (restoreKept).
+        val file = File(audioDir, "$CLIP_PREFIX${clock()}-$noteId.m4a")
         try {
             recorder.start(file)
         } catch (e: Exception) {
@@ -336,6 +355,11 @@ class VoiceController(
     }
 
     companion object {
+        private const val CLIP_PREFIX = "clip-"
+
+        /** clip-<time>-<noteId>.m4a */
+        private val CLIP_NAME = Regex("""^clip-(\d+)-(.+)\.m4a$""")
+
         /** Samples kept for the waveform; ~2.4 s at the default rate. */
         const val MAX_LEVELS = 24
 

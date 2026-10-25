@@ -190,6 +190,7 @@ private fun VoicePage(settings: VoiceSettings, micGranted: Boolean, onRequestMic
 private fun ApiPage(settings: VoiceSettings) {
     var hasKey by remember { mutableStateOf(settings.hasApiKey) }
     var keyDraft by remember { mutableStateOf("") }
+    var keyBad by remember { mutableStateOf(false) }
     var baseUrl by remember { mutableStateOf(settings.baseUrl) }
     var hostConfirmed by remember { mutableIntStateOf(0) }
     val colors = MaterialTheme.colorScheme
@@ -198,26 +199,36 @@ private fun ApiPage(settings: VoiceSettings) {
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
         OutlinedTextField(
             value = keyDraft,
-            onValueChange = { keyDraft = it },
+            onValueChange = { keyDraft = it; keyBad = false },
             label = { Text(stringResource(R.string.settings_api_key)) },
+            isError = keyBad,
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            stringResource(if (hasKey) R.string.settings_api_key_saved else R.string.settings_api_key_missing),
+            stringResource(
+                when {
+                    keyBad -> R.string.settings_api_key_bad
+                    hasKey -> R.string.settings_api_key_saved
+                    else -> R.string.settings_api_key_missing
+                }
+            ),
             style = MaterialTheme.typography.bodySmall,
-            color = colors.onSurfaceVariant,
+            color = if (keyBad) colors.error else colors.onSurfaceVariant,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
             PillButton(
                 text = stringResource(R.string.settings_save_key),
                 onClick = {
                     if (keyDraft.isNotBlank()) {
-                        settings.setApiKey(keyDraft)
-                        keyDraft = ""
-                        hasKey = true
+                        if (settings.setApiKey(keyDraft)) {
+                            keyDraft = ""
+                            hasKey = true
+                        } else {
+                            keyBad = true
+                        }
                     }
                 },
                 selected = keyDraft.isNotBlank(),

@@ -102,12 +102,25 @@ class NoteViewModel(
     private var dirty = false
     private val saveMutex = Mutex()
 
+    /**
+     * Bumped by every open, create and close. A load that finishes after another of those has
+     * happened is stale: applying it would bring back a note the user has already left.
+     */
+    private var openRequest = 0
+
+    /** Notes the user deleted (not blank ones dropped on close): late dictation mustn't recreate them. */
+    private val deletedIds = mutableSetOf<String>()
+
     fun open(noteId: String) {
         if (note?.id == noteId) return
         closeNote()
+        val request = openRequest
         // Through the save lock: closing then quickly reopening a note must read the saved copy,
         // not the one from before the close's save landed.
-        viewModelScope.launch { note = saveMutex.withLock { repository.load(noteId) } }
+        viewModelScope.launch {
+            val loaded = saveMutex.withLock { repository.load(noteId) }
+            if (request == openRequest) note = loaded
+        }
     }
 
     fun createNote() {
@@ -131,13 +144,16 @@ class NoteViewModel(
     /** Opens the last-edited note, or a new one, unless a note is already open. */
     fun ensureOpen() {
         if (note != null) return
+        val request = openRequest
         viewModelScope.launch {
-            if (note == null) note = saveMutex.withLock { repository.mostRecent() } ?: editor.newNote()
+            val loaded = saveMutex.withLock { repository.mostRecent() } ?: editor.newNote()
+            if (request == openRequest && note == null) note = loaded
         }
     }
 
     /** Saves the open note and returns to the list. A blank note is deleted instead. */
     fun closeNote() {
+        openRequest++
         val current = note ?: return
         if (current.isBlank) {
             saveJob?.cancel()
@@ -159,6 +175,7 @@ class NoteViewModel(
 
     /** Deletes now, but keeps the note in memory so [undoDelete] can bring it back. */
     fun deleteNote(noteId: String) {
+        deletedIds += noteId
         val open = note?.takeIf { it.id == noteId }
         if (open != null) {
             saveJob?.cancel()
@@ -187,6 +204,7 @@ class NoteViewModel(
     fun undoDelete() {
         val restored = recentlyDeleted ?: return
         recentlyDeleted = null
+        deletedIds -= restored.id
         persist { repository.save(restored) }
     }
 
@@ -237,9 +255,11 @@ class NoteViewModel(
     /**
      * Adds transcribed speech to [noteId]. Usually that's the open note; if the user has moved
      * on, it's written straight to storage. A note deleted as blank while the transcript was in
-     * flight is recreated, so speech is never lost.
+     * flight is recreated, so speech is never lost. A note the user deleted stays deleted (the
+     * words are still in History).
      */
     fun addTranscript(noteId: String, text: String, continues: Boolean = false) {
+        if (noteId in deletedIds) return
         if (note?.id == noteId) {
             val target = dictationBlock?.takeIf { continues && it.first == noteId }?.second
             edit { current ->
