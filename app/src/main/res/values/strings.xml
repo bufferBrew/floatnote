@@ -112,7 +112,26 @@
     <string name="settings_page_voice_help">Speech engine, language, microphone, auto-record</string>
     <string name="settings_page_api">API key and server</string>
     <string name="settings_page_api_help">For Whisper and the AI features</string>
-    <string name="settings_page_ai_help">Dictation clean-up and the model for ✦ Organise</string>
+    <!-- Note categories: list filter, editor picker, and the context ✦ Organise is given. -->
+    <string name="category_work">Work</string>
+    <string name="category_personal">Personal</string>
+    <string name="category_brew">Brew projects</string>
+    <string name="category_github">Personal GitHub</string>
+    <string name="category_all">All</string>
+    <string name="category_none">No category</string>
+    <string name="category_add">+ Category</string>
+    <string name="category_choose">Choose a category</string>
+    <string name="no_notes_in_category">No notes in %1$s yet.</string>
+    <string name="settings_ai_suggest">Add suggestions when organising</string>
+    <string name="settings_ai_suggest_help">✦ Organise also adds up to 3 lines marked ✦: a next step, a detail to decide, a related project. Undo removes them with the rest.</string>
+    <string name="settings_category_context">What the AI should know</string>
+    <string name="settings_category_context_help">Context for ✦ Organise, per category: your projects, team, people and abbreviations. Sent to the AI server with notes in that category, along with the titles of your other notes in it.</string>
+    <string name="settings_category_reset">Reset</string>
+    <string name="category_context_work">My job: meetings, colleagues, deadlines, decisions and tasks at work.</string>
+    <string name="category_context_personal">My personal life: family, home, errands, health, money, travel and plans.</string>
+    <string name="category_context_brew">My Brew apps (GitHub org bufferBrew, Flutter + Supabase, one shared Supabase project): BREW (personal AI dashboard: Gmail, GitHub, Notion and Todoist brief, trip planning), BrewWire (news aggregation, live sports, the daily AI brief), BrewFeed (Notion and notes reading space, blog drafts), NeuroBrew (turns a topic into a course with diagrams and voiceover), WealthBrew (eToro portfolio, spending and budgets), BrewHire (job hunting), BrewTales (offline picture-choice stories for pre-readers). Shared packages: brew_core, brew_auth, brew_ui.</string>
+    <string name="category_context_github">My other GitHub projects (not Brew): FloatNote (Android floating notes with voice), castack (CA practice management, Next.js), craftsman (Claude Code agent plugin), LitmusLLM (LLM eval harness), toddler-learn and Learn-Deutche (Android learning apps), WinCtrl (macOS Ctrl to Cmd remapper), gitpilot (MCP git server), todoist-to-notion (sync utility), portfolio (personal site).</string>
+    <string name="settings_page_ai_help">Dictation clean-up, ✦ Organise and what it knows per category</string>
     <string name="settings_page_floating">Floating note</string>
     <string name="settings_page_floating_help">What the Edge panel, tile and Float note icon open</string>
     <string name="back_to_settings">‹ Settings</string>

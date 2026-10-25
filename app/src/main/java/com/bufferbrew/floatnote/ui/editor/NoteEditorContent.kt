@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextDecoration
@@ -51,6 +52,9 @@ import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.BlockType
 import com.bufferbrew.floatnote.domain.model.Note
+import com.bufferbrew.floatnote.domain.model.NoteCategory
+import com.bufferbrew.floatnote.ai.labelRes
+import com.bufferbrew.floatnote.ui.components.CategoryChips
 import com.bufferbrew.floatnote.domain.model.TaskCompletionMode
 import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.theme.Dimens
@@ -85,7 +89,7 @@ fun NoteEditorContent(
     // A new line about to take focus may be below the fold: bring it into view so it can.
     LaunchedEffect(pendingFocus) {
         val index = currentNote.blocks.indexOfFirst { it.id == pendingFocus }
-        if (index >= 0) listState.animateScrollToItem(index + 1) // +1: the title is item 0
+        if (index >= 0) listState.animateScrollToItem(index + 2) // +2: the title and category come first
     }
     // Dictation lands at the end. Follow it if you were already looking at the end, as a
     // chat does; don't yank the view away from a line you're reading or editing higher up.
@@ -96,7 +100,7 @@ fun NoteEditorContent(
         seenLastId = lastId
         val info = listState.layoutInfo
         val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-        if (lastVisible >= info.totalItemsCount - 3) listState.animateScrollToItem(currentNote.blocks.size)
+        if (lastVisible >= info.totalItemsCount - 3) listState.animateScrollToItem(currentNote.blocks.size + 1)
     }
     Column(modifier) {
         LazyColumn(
@@ -112,6 +116,9 @@ fun NoteEditorContent(
                     style = if (compact) typography.titleMedium else typography.titleLarge,
                     modifier = Modifier.padding(vertical = if (compact) Dimens.SpaceXs else Dimens.SpaceS),
                 )
+            }
+            item(key = "category") {
+                CategoryPicker(note.category, actions::onCategoryChange, compact)
             }
             if (note.blocks.isEmpty()) {
                 item(key = "empty") {
@@ -149,6 +156,37 @@ fun NoteEditorContent(
             canRedo = canRedo,
             dense = compact,
         )
+    }
+}
+
+/**
+ * The note's category: one chip ("+ Category" when it has none) that opens the full row of
+ * choices, so it takes a single line even in the floating window.
+ */
+@Composable
+private fun CategoryPicker(category: NoteCategory?, onChange: (NoteCategory?) -> Unit, compact: Boolean) {
+    var choosing by remember { mutableStateOf(false) }
+    if (choosing) {
+        CategoryChips(
+            selected = category,
+            onSelect = {
+                onChange(it)
+                choosing = false
+            },
+            noneLabel = stringResource(R.string.category_none),
+            dense = true,
+        )
+    } else {
+        val label = category?.let { stringResource(it.labelRes) } ?: stringResource(R.string.category_add)
+        val choose = stringResource(R.string.category_choose)
+        Row(Modifier.padding(bottom = if (compact) Dimens.SpaceXs else Dimens.SpaceS)) {
+            PillButton(
+                text = label,
+                onClick = { choosing = true },
+                dense = true,
+                modifier = Modifier.semantics { onClick(label = choose) { choosing = true; true } },
+            )
+        }
     }
 }
 

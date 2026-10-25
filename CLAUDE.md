@@ -101,7 +101,14 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   `NoteAssistant.cleanUp` (per dictation, opt-in) and `organise` (✦ Organise in the editor);
   `NoteFormat` is the pure JSON in/out with validation (a bad reply never replaces the note).
   The session (`NoteViewModel.onOrganise`) keeps lines dictated meanwhile, drops the result if you
-  edited, and offers Undo until the note closes.
+  edited, and offers Undo until the note closes. Organise is given the note's category context
+  (`ai/CategoryContext`, editable in Settings → AI) and the titles of other notes in that category;
+  it fills an empty category and, when `VoiceSettings.aiSuggestions` is on, adds up to 3 lines
+  marked `✦ ` (`NoteFormat.ADDED_MARK`).
+- `domain/model/NoteCategory.kt`: Work / Personal / Brew projects / Personal GitHub. Stored as its
+  `key` in `notes.category` (Room v4, `AutoMigration(3, 4)`); never rename a key. The list filters by
+  it (`NoteViewModel.categoryFilter`, chips in `ui/components/CategoryChips.kt`); the editor sets it
+  from the chip under the title.
 - `ui/history/HistoryContent.kt`: dictation history (copy, open note, delete, clear), in both hosts.
   The floating panel also has a quick note switcher: tap the title (▾) for a row of recent notes.
 - `ui/settings/SettingsContent.kt`: Settings as a menu of pages (`SettingsPage`: Voice, API key and

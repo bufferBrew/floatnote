@@ -8,6 +8,7 @@ data class NoteSummary(
     val preview: String,
     val updatedAt: Long,
     val pinned: Boolean = false,
+    val category: NoteCategory? = null,
 )
 
 /** True when there is nothing worth keeping: no title and every line blank. */

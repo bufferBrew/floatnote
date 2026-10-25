@@ -2,6 +2,7 @@ package com.bufferbrew.floatnote.domain
 
 import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.Note
+import com.bufferbrew.floatnote.domain.model.NoteCategory
 import com.bufferbrew.floatnote.domain.model.TaskCompletionMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -20,6 +21,7 @@ class NotesBackupTest {
                 blocks = listOf(Block.Text("x", "Pack"), Block.Checklist("y", "Passport", true), Block.Task("z", "Taxi")),
                 taskMode = TaskCompletionMode.KeepInPlace,
                 pinned = true,
+                category = NoteCategory.BrewProjects,
             ),
             Note(id = "old2"),
         )
@@ -30,6 +32,8 @@ class NotesBackupTest {
         assertEquals("Trip", trip.title)
         assertEquals(TaskCompletionMode.KeepInPlace, trip.taskMode)
         assertEquals(true, trip.pinned)
+        assertEquals(NoteCategory.BrewProjects, trip.category)
+        assertEquals(null, back[1].category)
         assertEquals(
             listOf(Block.Text("id1", "Pack"), Block.Checklist("id2", "Passport", true), Block.Task("id3", "Taxi")),
             trip.blocks,

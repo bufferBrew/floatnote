@@ -108,6 +108,7 @@ class MainActivity : ComponentActivity() {
                             BackHandler { showSettings = false }
                             SettingsContent(
                                 settings = app.voiceSettings,
+                                categories = app.categoryContext,
                                 micGranted = micGranted,
                                 onRequestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) },
                                 openNewNote = openNewNote,
@@ -193,6 +194,8 @@ class MainActivity : ComponentActivity() {
                                     query = session.query,
                                     onQueryChange = { session.query = it },
                                     onPin = session::setPinned,
+                                    categoryFilter = session.categoryFilter,
+                                    onCategoryFilter = { session.categoryFilter = it },
                                 )
                             }
                         }

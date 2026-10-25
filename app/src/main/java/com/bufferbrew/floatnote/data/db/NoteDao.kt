@@ -11,21 +11,31 @@ interface NoteDao {
 
     /**
      * Pinned first, then most recently edited. A non-empty [pattern] (a LIKE pattern, already
-     * escaped with \\) keeps notes whose title or any line matches. Room re-emits when either
-     * table changes, so previews stay current.
+     * escaped with \\) keeps notes whose title or any line matches; a non-null [category] keeps
+     * only that category. Room re-emits when either table changes, so previews stay current.
      */
     @Query(
         """
-        SELECT n.id, n.title, n.updatedAt, n.pinned,
+        SELECT n.id, n.title, n.updatedAt, n.pinned, n.category,
             COALESCE((SELECT b.text FROM blocks b WHERE b.noteId = n.id AND TRIM(b.text) != ''
                 ORDER BY b.position LIMIT 1), '') AS preview
         FROM notes n
-        WHERE :pattern = '' OR n.title LIKE :pattern ESCAPE '\' OR EXISTS (
-            SELECT 1 FROM blocks b WHERE b.noteId = n.id AND b.text LIKE :pattern ESCAPE '\')
+        WHERE (:category IS NULL OR n.category = :category) AND (
+            :pattern = '' OR n.title LIKE :pattern ESCAPE '\' OR EXISTS (
+                SELECT 1 FROM blocks b WHERE b.noteId = n.id AND b.text LIKE :pattern ESCAPE '\'))
         ORDER BY n.pinned DESC, n.updatedAt DESC
         """
     )
-    fun observeSummaries(pattern: String): Flow<List<NoteSummaryRow>>
+    fun observeSummaries(pattern: String, category: String?): Flow<List<NoteSummaryRow>>
+
+    /** Titles of the other notes in [category], newest first, for ✦ Organise's context. */
+    @Query(
+        """
+        SELECT title FROM notes WHERE category = :category AND id != :excludeId AND TRIM(title) != ''
+        ORDER BY updatedAt DESC LIMIT :limit
+        """
+    )
+    suspend fun titlesIn(category: String, excludeId: String, limit: Int): List<String>
 
     @Query("UPDATE notes SET pinned = :pinned WHERE id = :id")
     suspend fun setPinned(id: String, pinned: Boolean)

@@ -94,6 +94,11 @@ class VoiceSettings(context: Context, private val cipher: SecretCipher = Keystor
         get() = prefs.getBoolean(KEY_AI_CLEANUP, false)
         set(value) = prefs.edit().putBoolean(KEY_AI_CLEANUP, value).apply()
 
+    /** ✦ Organise adds a few suggested points (next steps, open questions). On by default. */
+    var aiSuggestions: Boolean
+        get() = prefs.getBoolean(KEY_AI_SUGGEST, true)
+        set(value) = prefs.edit().putBoolean(KEY_AI_SUGGEST, value).apply()
+
     var aiModel: String
         get() = prefs.getString(KEY_AI_MODEL, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_AI_MODEL
         set(value) = prefs.edit().putString(KEY_AI_MODEL, value.trim()).apply()
@@ -178,6 +183,7 @@ class VoiceSettings(context: Context, private val cipher: SecretCipher = Keystor
         private const val KEY_API_KEY = "api_key"
         private const val KEY_KEY_HOST = "key_host"
         private const val KEY_AI_CLEANUP = "ai_cleanup"
+        private const val KEY_AI_SUGGEST = "ai_suggest"
         private const val KEY_AI_MODEL = "ai_model"
     }
 }

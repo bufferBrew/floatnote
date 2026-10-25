@@ -2,6 +2,7 @@ package com.bufferbrew.floatnote.domain
 
 import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.Note
+import com.bufferbrew.floatnote.domain.model.NoteCategory
 import com.bufferbrew.floatnote.domain.model.TaskCompletionMode
 import org.json.JSONArray
 import org.json.JSONException
@@ -33,6 +34,7 @@ object NotesBackup {
                     .put("title", note.title)
                     .put("taskMode", note.taskMode.name)
                     .put("pinned", note.pinned)
+                    .put("category", note.category?.key ?: JSONObject.NULL)
                     .put("blocks", blocks)
             )
         }
@@ -70,6 +72,7 @@ object NotesBackup {
                 taskMode = TaskCompletionMode.entries.firstOrNull { it.name == item.optString("taskMode") }
                     ?: TaskCompletionMode.MoveToBottom,
                 pinned = item.optBoolean("pinned"),
+                category = NoteCategory.fromKey(item.optString("category")),
             )
         }
     }

@@ -1,6 +1,7 @@
 package com.bufferbrew.floatnote
 
 import android.app.Application
+import com.bufferbrew.floatnote.ai.CategoryContext
 import com.bufferbrew.floatnote.ai.ChatClient
 import com.bufferbrew.floatnote.ai.NoteAssistant
 import com.bufferbrew.floatnote.data.NoteRepository
@@ -43,8 +44,21 @@ class FloatNoteApp : Application() {
 
     val voiceSettings: VoiceSettings by lazy { VoiceSettings(this) }
 
+    /** What ✦ Organise knows about each note category. */
+    val categoryContext: CategoryContext by lazy { CategoryContext(this) }
+
     /** AI clean-up and Organise, on the same OpenAI-compatible server and key as Whisper. */
-    val assistant: NoteAssistant by lazy { NoteAssistant(strings(), ChatClient(strings()), voiceSettings::llmConfig, voiceSettings::configProblem) }
+    val assistant: NoteAssistant by lazy {
+        NoteAssistant(
+            strings(),
+            ChatClient(strings()),
+            voiceSettings::llmConfig,
+            voiceSettings::configProblem,
+            categoryContext = categoryContext::get,
+            relatedTitles = { note -> note.category?.let { repository.titlesIn(it, note.id, RELATED_TITLES) }.orEmpty() },
+            addSuggestions = { voiceSettings.aiSuggestions },
+        )
+    }
 
     /**
      * The one editing session for the whole process. App-scoped rather than Activity-scoped so
@@ -87,6 +101,11 @@ class FloatNoteApp : Application() {
             scope = mainScope,
             onTranscript = transcripts::submit,
         )
+    }
+
+    private companion object {
+        /** Other notes' titles sent with ✦ Organise: enough to spot related work, still short. */
+        const val RELATED_TITLES = 15
     }
 
     override fun onCreate() {

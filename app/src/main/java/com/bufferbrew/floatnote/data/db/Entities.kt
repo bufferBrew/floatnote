@@ -15,6 +15,8 @@ data class NoteEntity(
     val updatedAt: Long,
     /** Pinned notes list first. Added in version 3. */
     @ColumnInfo(defaultValue = "0") val pinned: Boolean = false,
+    /** [com.bufferbrew.floatnote.domain.model.NoteCategory.key], or null. Added in version 4. */
+    val category: String? = null,
 )
 
 @Entity(
@@ -47,6 +49,7 @@ data class NoteSummaryRow(
     val updatedAt: Long,
     val preview: String,
     val pinned: Boolean,
+    val category: String?,
 )
 
 /**

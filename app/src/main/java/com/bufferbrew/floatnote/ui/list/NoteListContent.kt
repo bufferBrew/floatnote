@@ -35,7 +35,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.bufferbrew.floatnote.R
+import com.bufferbrew.floatnote.ai.labelRes
+import com.bufferbrew.floatnote.domain.model.NoteCategory
 import com.bufferbrew.floatnote.domain.model.NoteSummary
+import com.bufferbrew.floatnote.ui.components.CategoryChips
 import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.theme.Dimens
 import kotlinx.coroutines.delay
@@ -45,7 +48,7 @@ private const val UNDO_MS = 8_000L
 /**
  * The note list. Stateless and host-agnostic like the editor, so the floating overlay can
  * show it too. Long-press a note for Pin and Delete; an Undo bar brings a deleted note back for
- * a few seconds. The search box filters by title and every line.
+ * a few seconds. The search box filters by title and every line; the category chips by category.
  * (No confirm dialog: dialogs can't open from the floating panel, which has no Activity.)
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -65,6 +68,8 @@ fun NoteListContent(
     query: String = "",
     onQueryChange: ((String) -> Unit)? = null,
     onPin: ((id: String, pinned: Boolean) -> Unit)? = null,
+    categoryFilter: NoteCategory? = null,
+    onCategoryFilter: ((NoteCategory?) -> Unit)? = null,
 ) {
     var actionsFor by remember { mutableStateOf<String?>(null) }
     val actionsLabel = stringResource(R.string.note_actions)
@@ -91,11 +96,25 @@ fun NoteListContent(
             }
         }
         if (onQueryChange != null) SearchField(query, onQueryChange, compact)
+        if (onCategoryFilter != null) {
+            CategoryChips(
+                selected = categoryFilter,
+                onSelect = onCategoryFilter,
+                noneLabel = stringResource(R.string.category_all),
+                modifier = Modifier.padding(bottom = Dimens.SpaceS),
+                dense = compact,
+            )
+        }
         if (notes.isEmpty()) {
             // weight, not fillMaxSize, so the Undo bar below still fits after deleting the last note.
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
-                    stringResource(if (query.isBlank()) R.string.no_notes else R.string.search_none),
+                    when {
+                        query.isNotBlank() -> stringResource(R.string.search_none)
+                        categoryFilter != null ->
+                            stringResource(R.string.no_notes_in_category, stringResource(categoryFilter.labelRes))
+                        else -> stringResource(R.string.no_notes)
+                    },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -122,11 +141,17 @@ fun NoteListContent(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false),
                             )
-                            if (summary.pinned) {
+                            // "Work · Pinned"; the category is left out when the list already shows only it.
+                            val tags = listOfNotNull(
+                                summary.category?.takeIf { it != categoryFilter }?.let { stringResource(it.labelRes) },
+                                stringResource(R.string.pinned).takeIf { summary.pinned },
+                            )
+                            if (tags.isNotEmpty()) {
                                 Text(
-                                    "  " + stringResource(R.string.pinned),
+                                    "  " + tags.joinToString(" · "),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
                                 )
                             }
                         }

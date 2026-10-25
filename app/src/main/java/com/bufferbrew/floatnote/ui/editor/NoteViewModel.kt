@@ -14,6 +14,7 @@ import com.bufferbrew.floatnote.domain.NoteEditor
 import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.BlockType
 import com.bufferbrew.floatnote.domain.model.Note
+import com.bufferbrew.floatnote.domain.model.NoteCategory
 import com.bufferbrew.floatnote.domain.model.NoteSummary
 import com.bufferbrew.floatnote.domain.model.isBlank
 import com.bufferbrew.floatnote.domain.model.TaskCompletionMode
@@ -56,10 +57,13 @@ class NoteViewModel(
     /** What the list's search box holds. */
     var query by mutableStateOf("")
 
-    /** The list screen's notes: everything, or what matches [query]. */
+    /** The list's category chip: only notes in it, or every note when null. */
+    var categoryFilter by mutableStateOf<NoteCategory?>(null)
+
+    /** The list screen's notes: everything, or what matches [query] and [categoryFilter]. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val searchResults: Flow<List<NoteSummary>> =
-        snapshotFlow { query }.flatMapLatest { repository.observeSummaries(it) }
+        snapshotFlow { query to categoryFilter }.flatMapLatest { (q, c) -> repository.observeSummaries(q, c) }
 
     /** The open note, or null when the list should show. */
     var note by mutableStateOf<Note?>(null)
@@ -123,9 +127,10 @@ class NoteViewModel(
         }
     }
 
+    /** A note created while the list shows one category starts in that category. */
     fun createNote() {
         closeNote()
-        val created = editor.newNote()
+        val created = editor.newNote().copy(category = categoryFilter)
         note = created
         pendingFocus = created.blocks.first().id
     }
@@ -252,6 +257,8 @@ class NoteViewModel(
 
     override fun onTaskModeChange(mode: TaskCompletionMode) = edit { editor.setTaskMode(it, mode) }
 
+    override fun onCategoryChange(category: NoteCategory?) = edit { it.copy(category = category) }
+
     /**
      * Adds transcribed speech to [noteId]. Usually that's the open note; if the user has moved
      * on, it's written straight to storage. A note deleted as blank while the transcript was in
@@ -306,7 +313,14 @@ class NoteViewModel(
             val added = current.blocks.filter { it.id !in snapshotIds }
             beforeOrganise = current
             organisedIds = result.blocks.map { it.id }.toSet()
-            edit { result.copy(blocks = result.blocks + added) }
+            // Pin and category may have changed meanwhile; the AI's category only fills an empty one.
+            edit {
+                result.copy(
+                    blocks = result.blocks + added,
+                    pinned = current.pinned,
+                    category = current.category ?: result.category,
+                )
+            }
             assist = AssistState.Done
         }
     }

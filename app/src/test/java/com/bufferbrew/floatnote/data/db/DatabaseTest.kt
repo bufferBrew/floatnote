@@ -9,11 +9,13 @@ import com.bufferbrew.floatnote.data.RoomNoteRepository
 import com.bufferbrew.floatnote.data.RoomVoiceRepository
 import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.Note
+import com.bufferbrew.floatnote.domain.model.NoteCategory
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -73,6 +75,42 @@ class DatabaseTest {
                 assertEquals(0, it.getInt(1))
             }
         }
+    }
+
+    @Test
+    fun `migrating 3 to 4 adds category, empty for existing notes`() {
+        helper.createDatabase(DB, 3).use { v3 ->
+            v3.execSQL("INSERT INTO notes (id, title, taskMode, updatedAt, pinned) VALUES ('n1', 'Old', 'KeepInPlace', 5, 1)")
+        }
+        helper.runMigrationsAndValidate(DB, 4, true).use { v4 ->
+            v4.query("SELECT title, pinned, category FROM notes WHERE id = 'n1'").use {
+                it.moveToFirst()
+                assertEquals("Old", it.getString(0))
+                assertEquals(1, it.getInt(1))
+                assertTrue(it.isNull(2))
+            }
+        }
+    }
+
+    @Test
+    fun `category is saved, filters the list together with search, and lists related titles`() = runBlocking {
+        var now = 0L
+        val repo = RoomNoteRepository(db.noteDao(), clock = { ++now })
+        repo.save(Note("a", title = "Standup", blocks = listOf(Block.Text("a1", "milk")), category = NoteCategory.Work))
+        repo.save(Note("b", title = "Groceries", blocks = listOf(Block.Text("b1", "milk")), category = NoteCategory.Personal))
+        repo.save(Note("c", title = "Review", category = NoteCategory.Work))
+        repo.save(Note("d", title = "", category = NoteCategory.Work))
+        repo.save(Note("e", title = "Loose"))
+        assertEquals(NoteCategory.Work, repo.load("a")!!.category)
+        assertNull(repo.load("e")!!.category)
+        assertEquals(listOf("d", "c", "a"), repo.observeSummaries(category = NoteCategory.Work).first().map { it.id })
+        assertEquals(listOf("a"), repo.observeSummaries("milk", NoteCategory.Work).first().map { it.id })
+        assertEquals(5, repo.observeSummaries().first().size)
+        assertEquals(NoteCategory.Personal, repo.observeSummaries("groceries").first().single().category)
+        // Newest first, without the note itself or blank titles.
+        assertEquals(listOf("Review"), repo.titlesIn(NoteCategory.Work, excludeId = "a", limit = 10))
+        assertEquals(listOf("Review", "Standup"), repo.titlesIn(NoteCategory.Work, excludeId = "x", limit = 10))
+        assertEquals(listOf("Review"), repo.titlesIn(NoteCategory.Work, excludeId = "x", limit = 1))
     }
 
     @Test

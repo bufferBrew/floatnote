@@ -33,6 +33,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.bufferbrew.floatnote.R
+import com.bufferbrew.floatnote.ai.CategoryContext
+import com.bufferbrew.floatnote.ai.labelRes
+import com.bufferbrew.floatnote.domain.model.NoteCategory
 import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.theme.Dimens
 import com.bufferbrew.floatnote.voice.VoiceEngine
@@ -49,6 +52,8 @@ enum class SettingsPage { Voice, Api, Ai, Floating, Backup }
 @Composable
 fun SettingsContent(
     settings: VoiceSettings,
+    /** What ✦ Organise knows per note category; edited on the AI page. */
+    categories: CategoryContext,
     micGranted: Boolean,
     onRequestMic: () -> Unit,
     openNewNote: Boolean,
@@ -80,7 +85,7 @@ fun SettingsContent(
             null -> SettingsMenu(onOpen = { page = it })
             SettingsPage.Voice -> VoicePage(settings, micGranted, onRequestMic)
             SettingsPage.Api -> ApiPage(settings)
-            SettingsPage.Ai -> AiPage(settings)
+            SettingsPage.Ai -> AiPage(settings, categories)
             SettingsPage.Floating -> FloatingPage(openNewNote, onOpenNewNoteChange)
             SettingsPage.Backup -> BackupPage(onExport, onImport, backupMessage)
         }
@@ -280,8 +285,9 @@ private fun ApiPage(settings: VoiceSettings) {
 }
 
 @Composable
-private fun AiPage(settings: VoiceSettings) {
+private fun AiPage(settings: VoiceSettings, categories: CategoryContext) {
     var aiCleanup by remember { mutableStateOf(settings.aiCleanup) }
+    var aiSuggestions by remember { mutableStateOf(settings.aiSuggestions) }
     var aiModel by remember { mutableStateOf(settings.aiModel) }
     val hasKey = remember { settings.hasApiKey }
 
@@ -309,6 +315,56 @@ private fun AiPage(settings: VoiceSettings) {
         label = stringResource(R.string.settings_ai_model),
         help = stringResource(R.string.settings_ai_model_help),
     )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.settings_ai_suggest))
+            Text(
+                stringResource(R.string.settings_ai_suggest_help),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = aiSuggestions,
+            onCheckedChange = {
+                aiSuggestions = it
+                settings.aiSuggestions = it
+            },
+        )
+    }
+    Text(stringResource(R.string.settings_category_context), style = MaterialTheme.typography.titleMedium)
+    Text(
+        stringResource(R.string.settings_category_context_help),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    NoteCategory.entries.forEach { category -> CategoryContextField(category, categories) }
+}
+
+/** One category's context: a multi-line field that saves as you type, with Reset back to the default. */
+@Composable
+private fun CategoryContextField(category: NoteCategory, categories: CategoryContext) {
+    var text by remember { mutableStateOf(categories.get(category)) }
+    val default = remember { categories.default(category) }
+    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs)) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = {
+                text = it
+                categories.set(category, it)
+            },
+            label = { Text(stringResource(category.labelRes)) },
+            minLines = 2,
+            maxLines = 6,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (text.trim() != default.trim()) {
+            TextButton(onClick = {
+                text = default
+                categories.set(category, default)
+            }) { Text(stringResource(R.string.settings_category_reset)) }
+        }
+    }
 }
 
 @Composable

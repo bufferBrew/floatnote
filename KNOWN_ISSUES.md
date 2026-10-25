@@ -194,3 +194,9 @@
 - Ceiling (when this breaks): if long-press feels hidden, users may not find their way back from the pill (the notification's Show does not restore the size).
 - Upgrade trigger (what to do when it's hit): a first-time hint ("Long-press for the full note") the first time the pill appears.
 - Status: open (needs a device check: shrink through the threshold, long-press restore, ✕/✓, move)
+
+## 2026-10-25 — Note categories and context-aware ✦ Organise
+- What changed / what shortcut was taken: four fixed categories (an enum, not user-defined). Each has a context text, editable in Settings → AI, with built-in defaults that name the Brew apps and the other GitHub projects as of today. Organise sends that text plus up to 15 titles of other notes in the category; for a note with no category it sends every category's text so the model can pick one. Suggested lines are plain text blocks marked `✦ `, removed only by Organise's Undo or by hand.
+- Ceiling (when this breaks): the default project lists go stale as projects are renamed or retired; wanting a fifth category means a code change. Long context texts add tokens to every Organise.
+- Upgrade trigger (what to do when it's hit): user-defined categories (a table, with a migration), or a "✦" block type the UI can style and clear in one tap.
+- Status: open (not yet tried on a device or against a real AI server)

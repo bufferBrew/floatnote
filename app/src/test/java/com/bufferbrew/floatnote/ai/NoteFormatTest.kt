@@ -3,10 +3,12 @@ package com.bufferbrew.floatnote.ai
 import com.bufferbrew.floatnote.util.TestStrings
 import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.Note
+import com.bufferbrew.floatnote.domain.model.NoteCategory
 import com.bufferbrew.floatnote.domain.model.TaskCompletionMode
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NoteFormatTest {
@@ -64,5 +66,31 @@ class NoteFormatTest {
         assertThrows(AiException::class.java) { NoteFormat.fromJson("Sure! Here you go", base, newId, TestStrings) }
         assertThrows(AiException::class.java) { NoteFormat.fromJson("""{"title":"x","blocks":[]}""", base, newId, TestStrings) }
         assertThrows(AiException::class.java) { NoteFormat.fromJson("""{"title":"x"}""", base, newId, TestStrings) }
+    }
+
+    @Test
+    fun `sends the category, and takes the reply's only when the note has none`() {
+        assertEquals("brew", JSONObject(NoteFormat.toJson(base.copy(category = NoteCategory.BrewProjects))).getString("category"))
+        assertEquals("", JSONObject(NoteFormat.toJson(base)).getString("category"))
+        val reply = """{"category":"github","blocks":[{"type":"text","text":"x"}]}"""
+        assertEquals(NoteCategory.PersonalGithub, NoteFormat.fromJson(reply, base, newId, TestStrings).category)
+        val mine = base.copy(category = NoteCategory.Work)
+        assertEquals(NoteCategory.Work, NoteFormat.fromJson(reply, mine, newId, TestStrings).category)
+        val unknown = """{"category":"hobbies","blocks":[{"type":"text","text":"x"}]}"""
+        assertEquals(null, NoteFormat.fromJson(unknown, base, newId, TestStrings).category)
+    }
+
+    @Test
+    fun `suggested points are appended, marked, de-duplicated and capped`() {
+        val reply = """{"blocks":[{"type":"task","text":"Call mum"}],
+            "added":["Book the dentist", "", "call MUM", "✦ Book the dentist", "Check the budget", "Ask Sam", "One more"]}"""
+        val note = NoteFormat.fromJson(reply, base, newId, TestStrings, maxAdded = 3)
+        assertEquals(
+            listOf("Call mum", "✦ Book the dentist", "✦ Check the budget", "✦ Ask Sam"),
+            note.blocks.map { it.text },
+        )
+        assertTrue(note.blocks.drop(1).all { it is Block.Text })
+        // Off unless asked for.
+        assertEquals(listOf("Call mum"), NoteFormat.fromJson(reply, base, newId, TestStrings).blocks.map { it.text })
     }
 }

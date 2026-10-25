@@ -5,6 +5,7 @@ import com.bufferbrew.floatnote.data.db.NoteEntity
 import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.BlockType
 import com.bufferbrew.floatnote.domain.model.Note
+import com.bufferbrew.floatnote.domain.model.NoteCategory
 import com.bufferbrew.floatnote.domain.model.TaskCompletionMode
 import com.bufferbrew.floatnote.domain.model.type
 
@@ -14,6 +15,7 @@ fun Note.toEntity(updatedAt: Long) = NoteEntity(
     taskMode = taskMode.name,
     updatedAt = updatedAt,
     pinned = pinned,
+    category = category?.key,
 )
 
 fun Note.toBlockEntities(): List<BlockEntity> = blocks.mapIndexed { position, block ->
@@ -39,6 +41,7 @@ fun NoteEntity.toDomain(blocks: List<BlockEntity>) = Note(
     taskMode = TaskCompletionMode.entries.firstOrNull { it.name == taskMode }
         ?: TaskCompletionMode.MoveToBottom,
     pinned = pinned,
+    category = NoteCategory.fromKey(category),
 )
 
 private fun BlockEntity.toDomain(): Block =

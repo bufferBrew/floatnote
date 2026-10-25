@@ -377,6 +377,8 @@ fun OverlayPanel(
                             query = session.query,
                             onQueryChange = { session.query = it },
                             onPin = session::setPinned,
+                            categoryFilter = session.categoryFilter,
+                            onCategoryFilter = { session.categoryFilter = it },
                         )
                     } else {
                         NoteEditorContent(

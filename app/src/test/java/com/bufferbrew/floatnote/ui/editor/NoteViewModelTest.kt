@@ -6,6 +6,7 @@ import com.bufferbrew.floatnote.domain.NoteEditor
 import com.bufferbrew.floatnote.domain.model.Block
 import com.bufferbrew.floatnote.domain.model.BlockType
 import com.bufferbrew.floatnote.domain.model.Note
+import com.bufferbrew.floatnote.domain.model.NoteCategory
 import com.bufferbrew.floatnote.domain.model.NoteSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -29,7 +30,8 @@ class NoteViewModelTest {
     private class FakeRepository(private val initial: Note) : NoteRepository {
         val saved = mutableListOf<Note>()
         val deleted = mutableListOf<String>()
-        override fun observeSummaries(query: String) = emptyFlow<List<NoteSummary>>()
+        override fun observeSummaries(query: String, category: NoteCategory?) = emptyFlow<List<NoteSummary>>()
+        override suspend fun titlesIn(category: NoteCategory, excludeId: String, limit: Int) = emptyList<String>()
         val pins = mutableListOf<Pair<String, Boolean>>()
         override suspend fun setPinned(id: String, pinned: Boolean) { pins += id to pinned }
         override suspend fun all() = listOf(initial)
@@ -85,6 +87,52 @@ class NoteViewModelTest {
         vm.onUndoOrganise()
         assertEquals(start, vm.note)
         assertEquals(AssistState.Idle, vm.assist)
+    }
+
+    @Test
+    fun `organise fills an empty category but never replaces the user's`() {
+        organiseResult = { it.copy(category = NoteCategory.Work) }
+        val vm = organisingViewModel()
+        vm.onOrganise()
+        organiseGate.complete(Unit)
+        scope.runCurrent()
+        assertEquals(NoteCategory.Work, vm.note?.category)
+        vm.onUndoOrganise()
+        assertNull(vm.note?.category)
+    }
+
+    @Test
+    fun `a category picked while organising wins over the AI's`() {
+        organiseResult = { it.copy(category = NoteCategory.Work) }
+        val vm = organisingViewModel()
+        vm.onOrganise()
+        scope.runCurrent()
+        vm.onCategoryChange(NoteCategory.BrewProjects)
+        organiseGate.complete(Unit)
+        scope.runCurrent()
+        assertEquals(AssistState.Done, vm.assist)
+        assertEquals(NoteCategory.BrewProjects, vm.note?.category)
+    }
+
+    @Test
+    fun `category changes are saved and can be undone`() {
+        val vm = viewModel()
+        vm.onCategoryChange(NoteCategory.PersonalGithub)
+        scope.advanceTimeBy(500)
+        assertEquals(NoteCategory.PersonalGithub, repository.saved.last().category)
+        vm.onUndo()
+        assertNull(vm.note?.category)
+    }
+
+    @Test
+    fun `a new note starts in the category the list is showing`() {
+        val vm = viewModel()
+        vm.categoryFilter = NoteCategory.Personal
+        vm.createNote()
+        assertEquals(NoteCategory.Personal, vm.note?.category)
+        vm.categoryFilter = null
+        vm.createNote()
+        assertNull(vm.note?.category)
     }
 
     @Test
