@@ -46,6 +46,7 @@ Solo developer, main-branch workflow.
 | Lint        | `./gradlew lint`           |
 | Release APK | `./gradlew assembleRelease` (unsigned without the signing properties) |
 | CI          | `.github/workflows/ci.yml`: unit tests, lint, release build |
+| APK to Drive | Automatic: `.githooks/post-commit` builds the debug APK after each commit and copies it to `My Drive/apk/FloatNote-debug.apk` (log: `build/apk-to-drive.log`). Enable on a new clone with `git config core.hooksPath .githooks` |
 
 Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change done.
 

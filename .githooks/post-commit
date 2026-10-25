@@ -1,0 +1,37 @@
+#!/bin/sh
+# After every commit, build the debug APK and copy it to the Google Drive folder synced on this Mac,
+# so the phone can install the latest build. Runs in the background so the commit isn't held up;
+# progress and errors go to build/apk-to-drive.log. Enabled by: git config core.hooksPath .githooks
+# Override the destination with FLOATNOTE_APK_DIR; nothing happens if the folder isn't there.
+
+DEST_DIR="${FLOATNOTE_APK_DIR:-$HOME/Library/CloudStorage/GoogleDrive-kj.kartikjain@gmail.com/My Drive/apk}"
+[ -d "$DEST_DIR" ] || exit 0
+
+ROOT="$(git rev-parse --show-toplevel)" || exit 0
+mkdir -p "$ROOT/build"
+LOG="$ROOT/build/apk-to-drive.log"
+LOCK="$ROOT/build/apk-to-drive.lock"
+
+# One build at a time. A build already running picks up this commit when it finishes (it loops
+# until HEAD stops changing), so a burst of commits (rebase, amend) builds once or twice, not N times.
+mkdir "$LOCK" 2>/dev/null || exit 0
+
+(
+  trap 'rmdir "$LOCK"' EXIT
+  cd "$ROOT" || exit 1
+  built=""
+  while [ "$(git rev-parse HEAD)" != "$built" ]; do
+    built="$(git rev-parse HEAD)"
+    echo "$(date '+%F %T') building $(git rev-parse --short HEAD)"
+    if ./gradlew assembleDebug -q; then
+      cp app/build/outputs/apk/debug/app-debug.apk "$DEST_DIR/FloatNote-debug.apk.tmp" &&
+        mv -f "$DEST_DIR/FloatNote-debug.apk.tmp" "$DEST_DIR/FloatNote-debug.apk" &&
+        echo "$(date '+%F %T') copied to $DEST_DIR/FloatNote-debug.apk"
+    else
+      echo "$(date '+%F %T') build failed; Drive copy left as it was"
+      break
+    fi
+  done
+) >>"$LOG" 2>&1 </dev/null &
+
+exit 0
