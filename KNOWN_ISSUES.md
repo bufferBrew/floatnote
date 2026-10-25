@@ -188,3 +188,9 @@
 - Ceiling (when this breaks): after a kill during recording, Retry sends an unreadable file and Whisper rejects it; the user dismisses the error.
 - Upgrade trigger (what to do when it's hit): rename a clip to `kept-…` once its recording stops, and only restore those.
 - Status: open
+
+## 2026-10-25 — Record pill (panel shrunk to one button) not yet tried on a device
+- What changed / what shortcut was taken: the corner now resizes down to 44 dp; below 180×160 dp the panel shows only a record pill. The pill has no resize grip (it would cover the button): long-press restores the last full size instead. While recording, the window widens to 136 dp for ✕ / waveform / ✓.
+- Ceiling (when this breaks): if long-press feels hidden, users may not find their way back from the pill (the notification's Show does not restore the size).
+- Upgrade trigger (what to do when it's hit): a first-time hint ("Long-press for the full note") the first time the pill appears.
+- Status: open (needs a device check: shrink through the threshold, long-press restore, ✕/✓, move)

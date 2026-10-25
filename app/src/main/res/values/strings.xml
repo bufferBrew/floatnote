@@ -34,6 +34,10 @@
     <string name="overlay_notification_text">Tap to show it</string>
     <string name="voice_record">● Record</string>
     <string name="voice_stop">■ Stop</string>
+    <string name="voice_discard">Discard recording</string>
+    <string name="voice_done">Stop and add to note</string>
+    <string name="pill_record">Record into the note</string>
+    <string name="pill_restore">Back to full size</string>
     <string name="voice_listening">Listening · %1$s</string>
     <string name="voice_transcribing">Transcribing…</string>
     <string name="voice_retry">Retry</string>

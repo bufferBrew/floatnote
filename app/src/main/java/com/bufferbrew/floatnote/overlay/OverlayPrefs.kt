@@ -25,6 +25,14 @@ class OverlayPrefs(context: Context) {
             prefs.edit().putInt(KEY_LAYOUT_VERSION, LAYOUT_VERSION).apply()
         }
 
+    /**
+     * The last size the panel had while big enough to show the note (only width and height
+     * matter). Long-pressing the record pill goes back to it.
+     */
+    var fullPanel: WindowRect?
+        get() = readRect("full_panel")
+        set(value) = writeRect("full_panel", value)
+
     /** "Float note" (Edge panel, tile) starts a new note instead of reopening the last one. */
     var openNewNote: Boolean
         get() = prefs.getBoolean(KEY_OPEN_NEW, false)

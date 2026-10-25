@@ -1,6 +1,9 @@
 package com.bufferbrew.floatnote.overlay
 
-/** Panel size presets, in dp. The corner handle still allows any size in between. */
+/**
+ * Panel size presets, in dp. The corner handle allows any size, down to a record-only pill
+ * (see [WindowRect.isCompact]).
+ */
 enum class PanelSize(val widthDp: Int, val heightDp: Int) {
     Small(220, 260),
     Medium(280, 360),
@@ -29,6 +32,14 @@ data class WindowRect(val x: Int, val y: Int, val width: Int, val height: Int) {
             height = h,
         )
     }
+
+    /** Too small for the note panel: the window shows only the record pill. */
+    fun isCompact(fullMinWidth: Int, fullMinHeight: Int): Boolean =
+        width < fullMinWidth || height < fullMinHeight
+
+    /** At least [minWidth] × [minHeight] (e.g. while the pill shows ✕ and ✓), still inside [area]. */
+    fun grownTo(minWidth: Int, minHeight: Int, area: WindowRect): WindowRect =
+        copy(width = maxOf(width, minWidth), height = maxOf(height, minHeight)).clampedTo(area)
 
     /** Resizes from the bottom-right corner, never below the minimum or past [area]'s edge. */
     fun resizedBy(dw: Int, dh: Int, minWidth: Int, minHeight: Int, area: WindowRect): WindowRect {

@@ -67,8 +67,10 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   - `OverlayService`: foreground service (`specialUse`) that owns the window; notification has Show/Close.
   - `OverlayWindow`: one WindowManager window that is either the panel or the bubble; handles
     focus hand-off, opacity (content alpha, never window alpha), move/resize, and saves geometry via `OverlayPrefs`.
-  - `OverlayUi.kt`: `OverlayBubble` and `OverlayPanel`. The panel hosts the same
-    `NoteListContent` / `NoteEditorContent` as the full app.
+  - `OverlayUi.kt`: `OverlayBubble`, `OverlayPanel` and `OverlayRecordPill`. The panel hosts the same
+    `NoteListContent` / `NoteEditorContent` as the full app. The corner resizes freely down to one
+    button; below 180×160 dp the panel becomes the record pill (tap records, ✕/✓ while recording,
+    long-press restores the last full size, kept in `OverlayPrefs.fullPanel`).
   - `WindowDrag.kt`: drag/tap using raw screen coordinates, reported as the total offset since
     the drag started (the window is placed at start + offset, never stepped). Use it for anything that moves
     the window; Compose drag gestures jitter because the window moves under the finger.

@@ -45,4 +45,12 @@ class OverlayPrefsTest {
         prefs.openNewNote = true
         assertTrue(prefs.openNewNote)
     }
+
+    @Test
+    fun `the last full size round-trips`() {
+        val prefs = OverlayPrefs(context)
+        assertNull(prefs.fullPanel)
+        prefs.fullPanel = WindowRect(5, 6, 640, 820)
+        assertEquals(WindowRect(5, 6, 640, 820), OverlayPrefs(context).fullPanel)
+    }
 }

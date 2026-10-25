@@ -64,6 +64,8 @@ object BubbleColors {
     val Fill = Color(0xFF0E0E0D)
     val Content = Color(0xFFF2EFEA)
     val Edge = Color(0x26FFFFFF)
+    /** The ✕ and ✓ circles on the record pill. */
+    val ButtonFill = Color(0x1FFFFFFF)
 }
 
 /** Spacing and shape tokens. Use these instead of dp literals in UI code. */

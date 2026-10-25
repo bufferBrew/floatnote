@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -47,6 +48,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -116,11 +118,8 @@ fun OverlayBubble(
 private fun BubbleWave(voiceState: () -> VoiceState) {
     val state = voiceState()
     val levels = when (state) {
-        is VoiceState.Recording -> {
-            // Mirror the latest samples around the centre bar, like a voice meter.
-            val recent = state.levels.takeLast(3).let { List(3 - it.size) { 0f } + it }
-            listOf(recent[0], recent[1], recent[2], recent[1], recent[0])
-        }
+        // Mirror the latest samples around the centre bar, like a voice meter.
+        is VoiceState.Recording -> pillLevels(state)
         VoiceState.Transcribing -> pulsingLevels()
         else -> RestingLevels
     }
@@ -141,9 +140,111 @@ private fun pulsingLevels(): List<Float> {
 }
 
 /**
+ * The floating window shrunk below the note's minimum size: just a record button, in the dark
+ * pill style of the bubble (Wispr Flow's bar). Tap records into the open note; drag moves it;
+ * long-press goes back to the full panel. While recording it shows ✕ (throw the recording away),
+ * the waveform and ✓ (stop and add it to the note); the window widens to fit them.
+ */
+@Composable
+fun OverlayRecordPill(
+    voiceState: () -> VoiceState,
+    opacity: Float,
+    onRecord: () -> Unit,
+    onCancel: () -> Unit,
+    onRestore: () -> Unit,
+    onDragStart: () -> Unit,
+    onDrag: (Int, Int) -> Unit,
+    onDragEnd: () -> Unit,
+) {
+    // Read here, a leaf, so only the pill redraws as the voice level changes.
+    val state = voiceState()
+    val recordLabel = stringResource(R.string.pill_record)
+    val restoreLabel = stringResource(R.string.pill_restore)
+    // An error needs the panel's strip (Retry, Settings), so a tap opens it.
+    val onTap: (() -> Unit)? = when (state) {
+        VoiceState.Idle -> onRecord
+        is VoiceState.Error -> onRestore
+        else -> null
+    }
+    val tapLabel = when (state) {
+        is VoiceState.Error -> state.message
+        VoiceState.Transcribing -> stringResource(R.string.voice_transcribing)
+        else -> recordLabel
+    }
+    val drag = Modifier
+        .windowDrag(onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap, onLongPress = onRestore)
+        .semantics {
+            role = Role.Button
+            contentDescription = tapLabel
+            if (onTap != null) onClick(tapLabel) { onTap(); true }
+            onLongClick(restoreLabel) { onRestore(); true }
+        }
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer { alpha = opacity }
+            .clip(CircleShape)
+            .background(BubbleColors.Fill)
+            .border(Dimens.Hairline, BubbleColors.Edge, CircleShape),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (state is VoiceState.Recording) {
+            // ✕ and ✓ sit beside the drag area, not inside it, so their taps never start a drag.
+            RecordPillButton("✕", stringResource(R.string.voice_discard), onCancel)
+            Box(drag.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                Waveform(pillLevels(state), BubbleColors.Content, Dimens.BubbleWaveMaxHeight, bars = BubbleBars)
+            }
+            RecordPillButton("✓", stringResource(R.string.voice_done), onRecord)
+        } else {
+            Box(drag.fillMaxSize(), contentAlignment = Alignment.Center) {
+                when (state) {
+                    VoiceState.Transcribing -> Waveform(pulsingLevels(), BubbleColors.Content, Dimens.BubbleWaveMaxHeight, bars = BubbleBars)
+                    else -> Text(
+                        if (state is VoiceState.Error) "!" else "●",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = BubbleColors.Content,
+                        modifier = Modifier.clearAndSetSemantics {},
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** A small round button on the dark pill. */
+@Composable
+private fun RecordPillButton(glyph: String, label: String, onClick: () -> Unit) {
+    Box(Modifier.size(Dimens.CompactTouchTarget), contentAlignment = Alignment.Center) {
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = BubbleColors.ButtonFill,
+            contentColor = BubbleColors.Content,
+            modifier = Modifier
+                .size(Dimens.CompactButton)
+                .semantics {
+                    role = Role.Button
+                    contentDescription = label
+                },
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(glyph, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clearAndSetSemantics {})
+            }
+        }
+    }
+}
+
+/** The latest samples mirrored around the centre bar, like the bubble. */
+private fun pillLevels(state: VoiceState.Recording): List<Float> {
+    val recent = state.levels.takeLast(3).let { List(3 - it.size) { 0f } + it }
+    return listOf(recent[0], recent[1], recent[2], recent[1], recent[0])
+}
+
+/**
  * The expanded floating window: a slim rounded card. Hosts the same note list and editor as the
  * full app (in their compact style), so every editing feature works here too; only the frame
- * (drag the title to move, corner to resize, size/opacity, minimise, close) is new.
+ * (drag the title to move, size/opacity, minimise, close) is new. The resize corner sits on top
+ * of it, in [OverlayWindow], so it keeps working when the window shrinks into [OverlayRecordPill].
  *
  * Opacity is applied as a graphics layer on this content, never as window alpha (see
  * [OverlayWindow]). Touch targets are 36 dp here instead of 48 dp to keep the panel thin.
@@ -160,7 +261,6 @@ fun OverlayPanel(
     onOpacityChangeFinished: () -> Unit,
     onGeometryStart: () -> Unit,
     onMove: (Int, Int) -> Unit,
-    onResize: (Int, Int) -> Unit,
     onGeometryDone: () -> Unit,
     onMinimise: () -> Unit,
     onClose: () -> Unit,
@@ -298,7 +398,6 @@ fun OverlayPanel(
                         )
                     }
                 }
-                ResizeHandle(onGeometryStart, onResize, onGeometryDone, Modifier.align(Alignment.BottomEnd))
             }
         }
     }
@@ -451,7 +550,7 @@ private fun OpacityRow(opacity: Float, onChange: (Float) -> Unit, onChangeFinish
 }
 
 @Composable
-private fun ResizeHandle(
+internal fun ResizeHandle(
     onResizeStart: () -> Unit,
     onResize: (Int, Int) -> Unit,
     onResizeEnd: () -> Unit,

@@ -11,11 +11,19 @@ import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 import android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 import android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 import android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
@@ -57,6 +65,12 @@ class OverlayWindow(
     private var opacity by mutableFloatStateOf(prefs.opacity)
     private var focusable = true
 
+    /** The panel is too small for the note and shows only the record pill. */
+    private var compact by mutableStateOf(false)
+
+    /** A corner resize is in progress (the grip must outlive a switch to or from [compact]). */
+    private var resizing by mutableStateOf(false)
+
     // A short pill, like Wispr Flow's floating bar.
     private val bubbleWidth = dp(BUBBLE_WIDTH_DP)
     private val bubbleHeight = dp(BUBBLE_HEIGHT_DP)
@@ -67,10 +81,15 @@ class OverlayWindow(
         .clampedTo(usableArea())
 
     init {
-        panelPreset = PanelSize.entries.firstOrNull {
-            preset(it.widthDp) == panel.width && preset(it.heightDp) == panel.height
-        }
+        panelPreset = matchingPreset()
+        compact = isCompact(panel)
     }
+
+    private fun matchingPreset(): PanelSize? = PanelSize.entries.firstOrNull {
+        preset(it.widthDp) == panel.width && preset(it.heightDp) == panel.height
+    }
+
+    private fun isCompact(rect: WindowRect) = rect.isCompact(dp(FULL_MIN_WIDTH_DP), dp(FULL_MIN_HEIGHT_DP))
 
     private val params = WindowManager.LayoutParams(
         WindowManager.LayoutParams.WRAP_CONTENT,
@@ -144,6 +163,12 @@ class OverlayWindow(
     private fun OverlayContent() {
         // Here rather than in the panel, so minimising to the bubble keeps the recording going.
         AutoRecordEffect(session.note?.id)
+        // Derived, so this only reruns when recording starts or stops, not on every level sample.
+        val recording by remember { derivedStateOf { voice.isRecording } }
+        // The pill widens to fit ✕ and ✓ while recording, then goes back to its own size.
+        LaunchedEffect(recording) { update() }
+        // The pill records into the open note, so make sure there is one.
+        LaunchedEffect(compact) { if (compact) session.ensureOpen() }
         // Content alpha, not window alpha: see the class comment.
         FloatNoteTheme {
             when (mode) {
@@ -155,22 +180,53 @@ class OverlayWindow(
                     onDrag = { dx, dy -> moveBubble(dx, dy) },
                     onDragEnd = { prefs.bubble = bubble },
                 )
-                OverlayMode.Panel -> OverlayPanel(
-                    session = session,
-                    voiceState = { voice.state },
-                    voiceActions = voiceActions,
-                    opacity = opacity,
-                    panelSize = panelPreset,
-                    onPanelSize = ::applyPanelSize,
-                    onOpacityChange = ::changeOpacity,
-                    onOpacityChangeFinished = { prefs.opacity = opacity },
-                    onGeometryStart = { dragOrigin = panel },
-                    onMove = { dx, dy -> movePanel(dx, dy) },
-                    onResize = { dx, dy -> resizePanel(dx, dy) },
-                    onGeometryDone = { prefs.panel = panel },
-                    onMinimise = ::minimise,
-                    onClose = onClose,
-                )
+                OverlayMode.Panel -> Box(Modifier.fillMaxSize()) {
+                    if (compact) {
+                        OverlayRecordPill(
+                            voiceState = { voice.state },
+                            opacity = opacity,
+                            onRecord = voiceActions::onMicToggle,
+                            onCancel = voiceActions::onCancel,
+                            onRestore = ::restoreFullSize,
+                            onDragStart = { dragOrigin = panel },
+                            onDrag = { dx, dy -> movePanel(dx, dy) },
+                            onDragEnd = { prefs.panel = panel },
+                        )
+                    } else {
+                        OverlayPanel(
+                            session = session,
+                            voiceState = { voice.state },
+                            voiceActions = voiceActions,
+                            opacity = opacity,
+                            panelSize = panelPreset,
+                            onPanelSize = ::applyPanelSize,
+                            onOpacityChange = ::changeOpacity,
+                            onOpacityChangeFinished = { prefs.opacity = opacity },
+                            onGeometryStart = { dragOrigin = panel },
+                            onMove = { dx, dy -> movePanel(dx, dy) },
+                            onGeometryDone = { savePanel() },
+                            onMinimise = ::minimise,
+                            onClose = onClose,
+                        )
+                    }
+                    // Outside the if/else, so a resize carries on when the content switches
+                    // between the note and the pill under the finger. Hidden on the pill
+                    // otherwise: it would cover the record button (long-press restores instead).
+                    if (!compact || resizing) {
+                        ResizeHandle(
+                            onResizeStart = {
+                                dragOrigin = panel
+                                resizing = true
+                            },
+                            onResize = { dx, dy -> resizePanel(dx, dy) },
+                            onResizeEnd = {
+                                resizing = false
+                                savePanel()
+                            },
+                            modifier = Modifier.align(Alignment.BottomEnd).graphicsLayer { alpha = opacity },
+                        )
+                    }
+                }
             }
         }
     }
@@ -179,8 +235,24 @@ class OverlayWindow(
     private fun applyPanelSize(size: PanelSize) {
         panel = panel.copy(width = preset(size.widthDp), height = preset(size.heightDp)).clampedTo(usableArea())
         panelPreset = size
-        prefs.panel = panel
+        savePanel()
         update()
+    }
+
+    /** From the record pill (long-press): back to the last size that showed the note. */
+    private fun restoreFullSize() {
+        val full = prefs.fullPanel ?: WindowRect(0, 0, preset(DEFAULT_SIZE.widthDp), preset(DEFAULT_SIZE.heightDp))
+        panel = panel.copy(width = full.width, height = full.height).clampedTo(usableArea())
+        panelPreset = matchingPreset()
+        focusable = true
+        savePanel()
+        update()
+    }
+
+    /** Remembers the panel, and its size as the one to restore if it's still showing the note. */
+    private fun savePanel() {
+        prefs.panel = panel
+        if (!isCompact(panel)) prefs.fullPanel = panel
     }
 
     private fun changeOpacity(value: Float) {
@@ -198,7 +270,7 @@ class OverlayWindow(
 
     private fun resizePanel(dx: Int, dy: Int) {
         val origin = dragOrigin ?: panel
-        panel = origin.resizedBy(dx, dy, dp(MIN_PANEL_WIDTH_DP), dp(MIN_PANEL_HEIGHT_DP), usableArea())
+        panel = origin.resizedBy(dx, dy, dp(MIN_PANEL_SIZE_DP), dp(MIN_PANEL_SIZE_DP), usableArea())
         panelPreset = null
         update()
     }
@@ -216,13 +288,19 @@ class OverlayWindow(
     }
 
     private fun update() {
+        compact = isCompact(panel)
         if (!attached) return
         applyLayout()
         windowManager.updateViewLayout(root, params)
     }
 
     private fun applyLayout() {
-        val rect = if (mode == OverlayMode.Panel) panel else bubble
+        val rect = when {
+            mode == OverlayMode.Bubble -> bubble
+            compact && voice.isRecording ->
+                panel.grownTo(dp(PILL_RECORDING_WIDTH_DP), dp(PILL_RECORDING_HEIGHT_DP), usableArea())
+            else -> panel
+        }
         params.x = rect.x
         params.y = rect.y
         params.width = rect.width
@@ -234,7 +312,8 @@ class OverlayWindow(
         } else {
             params.flags and FLAG_WATCH_OUTSIDE_TOUCH.inv()
         }
-        val canFocus = mode == OverlayMode.Panel && focusable
+        // The pill has nothing to type into: leave the keyboard and Back with the app underneath.
+        val canFocus = mode == OverlayMode.Panel && focusable && !compact
         params.flags = if (canFocus) {
             params.flags and FLAG_NOT_FOCUSABLE.inv()
         } else {
@@ -293,8 +372,16 @@ class OverlayWindow(
     private companion object {
         val DEFAULT_SIZE = PanelSize.Small
         const val MAX_PRESET_SCALE = 1.5f
-        const val MIN_PANEL_WIDTH_DP = 180
-        const val MIN_PANEL_HEIGHT_DP = 160
+        /** Below either of these the panel turns into the record pill. */
+        const val FULL_MIN_WIDTH_DP = 180
+        const val FULL_MIN_HEIGHT_DP = 160
+
+        /** The smallest the corner can make it: one record button. */
+        const val MIN_PANEL_SIZE_DP = 44
+
+        /** Room for ✕, a waveform and ✓ while the pill is recording. */
+        const val PILL_RECORDING_WIDTH_DP = 136
+        const val PILL_RECORDING_HEIGHT_DP = 44
         const val BUBBLE_WIDTH_DP = 56
         const val BUBBLE_HEIGHT_DP = 30
     }

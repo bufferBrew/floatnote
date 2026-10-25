@@ -43,6 +43,7 @@ import com.bufferbrew.floatnote.FloatLaunchActivity
 import com.bufferbrew.floatnote.FloatNoteApp
 import com.bufferbrew.floatnote.MainActivity
 import com.bufferbrew.floatnote.R
+import com.bufferbrew.floatnote.ui.components.CircleButton
 import com.bufferbrew.floatnote.ui.theme.Dimens
 import kotlin.math.sqrt
 
@@ -141,7 +142,9 @@ fun VoiceStatus(voiceState: () -> VoiceState, actions: VoiceActions, modifier: M
     ) {
         when (state) {
             is VoiceState.Recording -> {
+                // Like Wispr Flow: ✕ throws the recording away, ✓ stops and adds it to the note.
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircleButton("✕", stringResource(R.string.voice_discard), actions::onCancel, dense = true)
                     Waveform(
                         levels = state.levels,
                         color = colors.onSurface,
@@ -154,6 +157,7 @@ fun VoiceStatus(voiceState: () -> VoiceState, actions: VoiceActions, modifier: M
                         color = colors.onSurfaceVariant,
                         modifier = Modifier.padding(start = Dimens.SpaceS),
                     )
+                    CircleButton("✓", stringResource(R.string.voice_done), actions::onMicToggle, dense = true)
                 }
                 // Device engine: the sentence being heard, before it lands in the note.
                 if (state.partial.isNotBlank()) {
