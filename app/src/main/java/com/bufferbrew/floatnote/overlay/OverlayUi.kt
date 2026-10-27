@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,18 +83,39 @@ private const val BubbleBars = 5
 /**
  * The minimised state, in the style of Wispr Flow's floating bar: a small dark pill with a
  * waveform. While recording the bars follow your voice; while transcribing they pulse.
- * Drag it anywhere; tap to open the panel again.
+ * Drag it anywhere. Tap starts listening (and tap again stops and adds it to the note), like the
+ * record pill; long-press opens the panel. While transcribing, or after an error, a tap opens the
+ * panel instead, where Cancel, Retry and Settings are.
  */
 @Composable
 fun OverlayBubble(
     voiceState: () -> VoiceState,
     opacity: Float,
-    onTap: () -> Unit,
+    onRecord: () -> Unit,
+    onOpen: () -> Unit,
     onDragStart: () -> Unit,
     onDrag: (Int, Int) -> Unit,
     onDragEnd: () -> Unit,
 ) {
-    val label = stringResource(R.string.open_floating_note)
+    // Only whether it's recording or idle matters here; the bars read the level in BubbleWave.
+    val kind by remember(voiceState) {
+        derivedStateOf {
+            when (voiceState()) {
+                VoiceState.Idle -> BubbleTap.Record
+                is VoiceState.Recording -> BubbleTap.Stop
+                else -> BubbleTap.Open
+            }
+        }
+    }
+    val onTap = if (kind == BubbleTap.Open) onOpen else onRecord
+    val label = stringResource(
+        when (kind) {
+            BubbleTap.Record -> R.string.pill_record
+            BubbleTap.Stop -> R.string.bubble_stop
+            BubbleTap.Open -> R.string.open_floating_note
+        }
+    )
+    val openLabel = stringResource(R.string.open_floating_note)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -101,17 +123,20 @@ fun OverlayBubble(
             .clip(CircleShape)
             .background(BubbleColors.Fill)
             .border(Dimens.Hairline, BubbleColors.Edge, CircleShape)
-            .windowDrag(onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap)
+            .windowDrag(onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap, onLongPress = onOpen)
             .semantics {
                 role = Role.Button
                 contentDescription = label
                 onClick(label) { onTap(); true }
+                onLongClick(openLabel) { onOpen(); true }
             },
         contentAlignment = Alignment.Center,
     ) {
         BubbleWave(voiceState)
     }
 }
+
+private enum class BubbleTap { Record, Stop, Open }
 
 /** Its own scope, so only the bars redraw as the voice level changes. */
 @Composable

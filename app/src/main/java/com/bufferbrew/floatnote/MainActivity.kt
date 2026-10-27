@@ -109,6 +109,7 @@ class MainActivity : ComponentActivity() {
                             SettingsContent(
                                 settings = app.voiceSettings,
                                 categories = app.categoryContext,
+                                connectionCheck = app.connectionCheck,
                                 micGranted = micGranted,
                                 onRequestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) },
                                 openNewNote = openNewNote,

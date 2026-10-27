@@ -13,7 +13,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -21,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
@@ -36,10 +37,14 @@ import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.ai.CategoryContext
 import com.bufferbrew.floatnote.ai.labelRes
 import com.bufferbrew.floatnote.domain.model.NoteCategory
+import com.bufferbrew.floatnote.net.CheckLine
+import com.bufferbrew.floatnote.net.ConnectionCheck
+import com.bufferbrew.floatnote.ui.components.AppSwitch
 import com.bufferbrew.floatnote.ui.components.PillButton
 import com.bufferbrew.floatnote.ui.theme.Dimens
 import com.bufferbrew.floatnote.voice.VoiceEngine
 import com.bufferbrew.floatnote.voice.VoiceSettings
+import kotlinx.coroutines.launch
 
 /** The Settings pages. Dictionary and History are pages of their own beside the notes. */
 enum class SettingsPage { Voice, Api, Ai, Floating, Backup }
@@ -54,6 +59,8 @@ fun SettingsContent(
     settings: VoiceSettings,
     /** What ✦ Organise knows per note category; edited on the AI page. */
     categories: CategoryContext,
+    /** Runs "Test connection" on the API and AI pages. */
+    connectionCheck: ConnectionCheck,
     micGranted: Boolean,
     onRequestMic: () -> Unit,
     openNewNote: Boolean,
@@ -84,8 +91,8 @@ fun SettingsContent(
         when (current) {
             null -> SettingsMenu(onOpen = { page = it })
             SettingsPage.Voice -> VoicePage(settings, micGranted, onRequestMic)
-            SettingsPage.Api -> ApiPage(settings)
-            SettingsPage.Ai -> AiPage(settings, categories)
+            SettingsPage.Api -> ApiPage(settings, connectionCheck)
+            SettingsPage.Ai -> AiPage(settings, categories, connectionCheck)
             SettingsPage.Floating -> FloatingPage(openNewNote, onOpenNewNoteChange)
             SettingsPage.Backup -> BackupPage(onExport, onImport, backupMessage)
         }
@@ -181,7 +188,7 @@ private fun VoicePage(settings: VoiceSettings, micGranted: Boolean, onRequestMic
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(stringResource(R.string.settings_auto_record), modifier = Modifier.weight(1f))
-        Switch(
+        AppSwitch(
             checked = autoRecord,
             onCheckedChange = {
                 autoRecord = it
@@ -192,7 +199,7 @@ private fun VoicePage(settings: VoiceSettings, micGranted: Boolean, onRequestMic
 }
 
 @Composable
-private fun ApiPage(settings: VoiceSettings) {
+private fun ApiPage(settings: VoiceSettings, check: ConnectionCheck) {
     var hasKey by remember { mutableStateOf(settings.hasApiKey) }
     var keyDraft by remember { mutableStateOf("") }
     var keyBad by remember { mutableStateOf(false) }
@@ -282,10 +289,73 @@ private fun ApiPage(settings: VoiceSettings) {
             )
         }
     }
+    ConnectionTest(settings, check)
+}
+
+/**
+ * "Test connection": checks the saved key, the speech model and the AI model against the server,
+ * and lists the result, one line each.
+ */
+@Composable
+private fun ConnectionTest(settings: VoiceSettings, check: ConnectionCheck) {
+    val scope = rememberCoroutineScope()
+    var running by remember { mutableStateOf(false) }
+    var results by remember { mutableStateOf<List<CheckLine>>(emptyList()) }
+    val colors = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+        PillButton(
+            text = stringResource(if (running) R.string.check_running else R.string.check_run),
+            onClick = {
+                if (running) return@PillButton
+                running = true
+                scope.launch {
+                    results = check.run(settings.config(), settings.configProblem(), settings.aiModel)
+                    running = false
+                }
+            },
+            selected = true,
+        )
+        Text(stringResource(R.string.check_help), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+        if (results.isNotEmpty()) {
+            Column(
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
+            ) {
+                results.forEach { line ->
+                    val (mark, status) = when (line.ok) {
+                        true -> "✓" to stringResource(R.string.check_passed)
+                        false -> "✕" to stringResource(R.string.check_failed)
+                        null -> "–" to stringResource(R.string.check_unknown)
+                    }
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "${line.label}: $status. ${line.detail}"
+                        },
+                    ) {
+                        Text(
+                            mark,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (line.ok == false) colors.error else colors.onSurface,
+                            modifier = Modifier.padding(end = Dimens.SpaceS),
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(line.label, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                line.detail,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (line.ok == false) colors.error else colors.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
-private fun AiPage(settings: VoiceSettings, categories: CategoryContext) {
+private fun AiPage(settings: VoiceSettings, categories: CategoryContext, check: ConnectionCheck) {
     var aiCleanup by remember { mutableStateOf(settings.aiCleanup) }
     var aiSuggestions by remember { mutableStateOf(settings.aiSuggestions) }
     var aiModel by remember { mutableStateOf(settings.aiModel) }
@@ -301,7 +371,7 @@ private fun AiPage(settings: VoiceSettings, categories: CategoryContext) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Switch(
+        AppSwitch(
             checked = aiCleanup,
             onCheckedChange = {
                 aiCleanup = it
@@ -324,7 +394,7 @@ private fun AiPage(settings: VoiceSettings, categories: CategoryContext) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Switch(
+        AppSwitch(
             checked = aiSuggestions,
             onCheckedChange = {
                 aiSuggestions = it
@@ -338,6 +408,7 @@ private fun AiPage(settings: VoiceSettings, categories: CategoryContext) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    ConnectionTest(settings, check)
     NoteCategory.entries.forEach { category -> CategoryContextField(category, categories) }
 }
 
@@ -379,7 +450,7 @@ private fun FloatingPage(openNewNote: Boolean, onOpenNewNoteChange: (Boolean) ->
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Switch(checked = openNewNote, onCheckedChange = onOpenNewNoteChange)
+        AppSwitch(checked = openNewNote, onCheckedChange = onOpenNewNoteChange)
     }
 }
 

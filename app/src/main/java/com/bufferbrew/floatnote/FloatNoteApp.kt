@@ -10,6 +10,7 @@ import com.bufferbrew.floatnote.data.RoomVoiceRepository
 import com.bufferbrew.floatnote.data.VoiceRepository
 import com.bufferbrew.floatnote.data.db.FloatNoteDatabase
 import com.bufferbrew.floatnote.domain.Vocabulary
+import com.bufferbrew.floatnote.net.ConnectionCheck
 import com.bufferbrew.floatnote.domain.model.VocabEntry
 import com.bufferbrew.floatnote.ui.editor.NoteViewModel
 import com.bufferbrew.floatnote.util.strings
@@ -43,6 +44,9 @@ class FloatNoteApp : Application() {
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     val voiceSettings: VoiceSettings by lazy { VoiceSettings(this) }
+
+    /** Settings' "Test connection". */
+    val connectionCheck: ConnectionCheck by lazy { ConnectionCheck(strings(), ChatClient(strings())) }
 
     /** What ✦ Organise knows about each note category. */
     val categoryContext: CategoryContext by lazy { CategoryContext(this) }

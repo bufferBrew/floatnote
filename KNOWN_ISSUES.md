@@ -200,3 +200,9 @@
 - Ceiling (when this breaks): the default project lists go stale as projects are renamed or retired; wanting a fifth category means a code change. Long context texts add tokens to every Organise.
 - Upgrade trigger (what to do when it's hit): user-defined categories (a table, with a migration), or a "✦" block type the UI can style and clear in one tap.
 - Status: open (not yet tried on a device or against a real AI server)
+
+## 2026-10-27 — Bubble tap now records; Test connection
+- What changed / what shortcut was taken: tapping the minimised bubble starts listening (tap again stops and adds it), and long-press opens the panel, matching the record pill. Minimising makes sure a note is open (the most recent one) so there's somewhere to record into. Settings' Test connection checks the speech model against the server's `/models` list; a server without that list shows "Not checked" for it.
+- Ceiling (when this breaks): opening the panel is now a long-press, which may not be obvious; the notification's Show still opens it. A server whose `/models` omits a working model shows a false "Not offered".
+- Upgrade trigger (what to do when it's hit): a first-time hint on the bubble; or test the speech model with a short silent clip instead of the model list.
+- Status: open (not yet tried on a device)

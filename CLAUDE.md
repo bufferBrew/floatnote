@@ -71,7 +71,9 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   - `OverlayUi.kt`: `OverlayBubble`, `OverlayPanel` and `OverlayRecordPill`. The panel hosts the same
     `NoteListContent` / `NoteEditorContent` as the full app. The corner resizes freely down to one
     button; below 180×160 dp the panel becomes the record pill (tap records, ✕/✓ while recording,
-    long-press restores the last full size, kept in `OverlayPrefs.fullPanel`).
+    long-press restores the last full size, kept in `OverlayPrefs.fullPanel`). The minimised bubble
+    works the same way: tap records / stops, long-press opens the panel (a tap opens it while
+    transcribing or after an error).
   - `WindowDrag.kt`: drag/tap using raw screen coordinates, reported as the total offset since
     the drag started (the window is placed at start + offset, never stepped). Use it for anything that moves
     the window; Compose drag gestures jitter because the window moves under the finger.
@@ -113,7 +115,10 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - `ui/history/HistoryContent.kt`: dictation history (copy, open note, delete, clear), in both hosts.
   The floating panel also has a quick note switcher: tap the title (▾) for a row of recent notes.
 - `ui/settings/SettingsContent.kt`: Settings as a menu of pages (`SettingsPage`: Voice, API key and
-  server, AI, Floating note, Backup) in the full app. The Dictionary (`ui/dictionary/`) and History
+  server, AI, Floating note, Backup) in the full app. The API and AI pages have "Test connection"
+  (`net/ConnectionCheck`: `GET /models` for the key and speech model, one tiny chat call for the AI
+  model). Use `AppSwitch` (`ui/components/Toggle.kt`), not Material's `Switch`: its off state
+  draws in our near-invisible `outline` colour. The Dictionary (`ui/dictionary/`) and History
   are pages of their own beside the notes, in both hosts.
 - Notes list: search (`NoteViewModel.query` → `searchResults`), long-press for Pin / Delete (Undo bar).
   The session also keeps undo/redo per open note (`onUndo` / `onRedo`).

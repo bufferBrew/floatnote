@@ -38,6 +38,7 @@
     <string name="voice_done">Stop and add to note</string>
     <string name="pill_record">Record into the note</string>
     <string name="pill_restore">Back to full size</string>
+    <string name="bubble_stop">Stop and add to the note</string>
     <string name="voice_listening">Listening · %1$s</string>
     <string name="voice_transcribing">Transcribing…</string>
     <string name="voice_retry">Retry</string>
@@ -131,6 +132,22 @@
     <string name="category_context_personal">My personal life: family, home, errands, health, money, travel and plans.</string>
     <string name="category_context_brew">My Brew apps (GitHub org bufferBrew, Flutter + Supabase, one shared Supabase project): BREW (personal AI dashboard: Gmail, GitHub, Notion and Todoist brief, trip planning), BrewWire (news aggregation, live sports, the daily AI brief), BrewFeed (Notion and notes reading space, blog drafts), NeuroBrew (turns a topic into a course with diagrams and voiceover), WealthBrew (eToro portfolio, spending and budgets), BrewHire (job hunting), BrewTales (offline picture-choice stories for pre-readers). Shared packages: brew_core, brew_auth, brew_ui.</string>
     <string name="category_context_github">My other GitHub projects (not Brew): FloatNote (Android floating notes with voice), castack (CA practice management, Next.js), craftsman (Claude Code agent plugin), LitmusLLM (LLM eval harness), toddler-learn and Learn-Deutche (Android learning apps), WinCtrl (macOS Ctrl to Cmd remapper), gitpilot (MCP git server), todoist-to-notion (sync utility), portfolio (personal site).</string>
+    <!-- Settings: Test connection. -->
+    <string name="check_run">Test connection</string>
+    <string name="check_running">Testing…</string>
+    <string name="check_help">Checks the key, the speech model and the AI model against the server. Sends one tiny AI request.</string>
+    <string name="check_key">Key and server</string>
+    <string name="check_key_ok">Accepted by %1$s</string>
+    <string name="check_unreachable">Couldn\'t reach %1$s. Check the address and your connection.</string>
+    <string name="check_speech_model">Speech model (%1$s)</string>
+    <string name="check_ai_model">AI model (%1$s)</string>
+    <string name="check_model_offered">Offered by the server</string>
+    <string name="check_model_missing">Not offered by %1$s. Check the name in Settings.</string>
+    <string name="check_model_unlisted">Couldn\'t check: the server doesn\'t list its models</string>
+    <string name="check_ai_ok">Answered</string>
+    <string name="check_passed">Passed</string>
+    <string name="check_failed">Failed</string>
+    <string name="check_unknown">Not checked</string>
     <string name="settings_page_ai_help">Dictation clean-up, ✦ Organise and what it knows per category</string>
     <string name="settings_page_floating">Floating note</string>
     <string name="settings_page_floating_help">What the Edge panel, tile and Float note icon open</string>

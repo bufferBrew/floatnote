@@ -167,15 +167,16 @@ class OverlayWindow(
         val recording by remember { derivedStateOf { voice.isRecording } }
         // The pill widens to fit ✕ and ✓ while recording, then goes back to its own size.
         LaunchedEffect(recording) { update() }
-        // The pill records into the open note, so make sure there is one.
-        LaunchedEffect(compact) { if (compact) session.ensureOpen() }
+        // The pill and the bubble record into the open note, so make sure there is one.
+        LaunchedEffect(compact, mode) { if (compact || mode == OverlayMode.Bubble) session.ensureOpen() }
         // Content alpha, not window alpha: see the class comment.
         FloatNoteTheme {
             when (mode) {
                 OverlayMode.Bubble -> OverlayBubble(
                     voiceState = { voice.state },
                     opacity = opacity,
-                    onTap = ::expand,
+                    onRecord = voiceActions::onMicToggle,
+                    onOpen = ::expand,
                     onDragStart = { dragOrigin = bubble },
                     onDrag = { dx, dy -> moveBubble(dx, dy) },
                     onDragEnd = { prefs.bubble = bubble },
