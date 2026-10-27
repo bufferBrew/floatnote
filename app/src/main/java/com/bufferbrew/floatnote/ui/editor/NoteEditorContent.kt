@@ -320,13 +320,14 @@ private fun EditorToolbar(
             selected = recording,
             dense = dense,
         )
-        if (canUndo) PillButton(stringResource(R.string.edit_undo), actions::onUndo, dense = dense)
-        if (canRedo) PillButton(stringResource(R.string.edit_redo), actions::onRedo, dense = dense)
+        // Next to Record, so it's visible without scrolling the toolbar in the floating window.
         PillButton(
             text = stringResource(if (organising) R.string.ai_organising else R.string.ai_organise),
             onClick = actions::onOrganise,
             dense = dense,
         )
+        if (canUndo) PillButton(stringResource(R.string.edit_undo), actions::onUndo, dense = dense)
+        if (canRedo) PillButton(stringResource(R.string.edit_redo), actions::onRedo, dense = dense)
         PillButton(stringResource(R.string.block_text), { actions.onChangeType(BlockType.Text) }, dense = dense)
         PillButton(stringResource(R.string.block_checklist), { actions.onChangeType(BlockType.Checklist) }, dense = dense)
         PillButton(stringResource(R.string.block_task), { actions.onChangeType(BlockType.Task) }, dense = dense)
