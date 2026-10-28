@@ -25,6 +25,12 @@ interface VoiceDao {
         trimDictations(keep)
     }
 
+    @Query("SELECT audio FROM dictations WHERE audio IS NOT NULL")
+    suspend fun audioNames(): List<String>
+
+    @Query("SELECT audio FROM dictations WHERE id = :id")
+    suspend fun audioOf(id: Long): String?
+
     @Query("DELETE FROM dictations WHERE id = :id")
     suspend fun deleteDictation(id: Long)
 

@@ -12,6 +12,12 @@ import java.util.UUID
 fun interface NoteOrganiser {
     /** Throws [AiException] with a user-facing message on any failure. */
     suspend fun organise(note: Note): Note
+
+    /**
+     * Adds a summary line at the top and the note's open action items as tasks, leaving the
+     * rest as it is. Throws [AiException] like [organise].
+     */
+    suspend fun summarise(note: Note): Note = throw AiException("Summarise isn't available.")
 }
 
 /**
@@ -37,11 +43,21 @@ class NoteAssistant(
     private val addSuggestions: () -> Boolean = { false },
 ) : NoteOrganiser {
 
+    private fun requireConfig(): LlmConfig = config() ?: throw AiException(
+        configProblem()?.let { strings.get(R.string.err_organise_blocked, it) } ?: strings.get(R.string.err_no_key),
+        needsSettings = true,
+    )
+
+    override suspend fun summarise(note: Note): Note {
+        val cfg = requireConfig()
+        val system = SUMMARY_PROMPT + "\n\n" + contextAbout(note, relatedTitles(note), pickCategory = false)
+        val reply = model.complete(system, NoteFormat.toJson(note), cfg, json = true)
+        val summarised = NoteFormat.summaryFromJson(reply, note, newId, strings)
+        return editor.setTaskMode(summarised, summarised.taskMode)
+    }
+
     override suspend fun organise(note: Note): Note {
-        val cfg = config() ?: throw AiException(
-            configProblem()?.let { strings.get(R.string.err_organise_blocked, it) } ?: strings.get(R.string.err_no_key),
-            needsSettings = true,
-        )
+        val cfg = requireConfig()
         val suggest = addSuggestions()
         val system = organisePrompt(note, relatedTitles(note), suggest)
         val reply = model.complete(system, NoteFormat.toJson(note), cfg, json = true)
@@ -57,7 +73,13 @@ class NoteAssistant(
     internal fun organisePrompt(note: Note, related: List<String>, suggest: Boolean): String = buildString {
         append(ORGANISE_PROMPT)
         append(if (suggest) SUGGEST_RULE else NO_SUGGEST_RULE)
-        append("\n\nContext about this person. Use it to understand names, projects and abbreviations; ")
+        append("\n\n")
+        append(contextAbout(note, related, pickCategory = true))
+    }
+
+    /** What's known about the note's category; with [pickCategory], every category's, to choose one. */
+    private fun contextAbout(note: Note, related: List<String>, pickCategory: Boolean): String = buildString {
+        append("Context about this person. Use it to understand names, projects and abbreviations; ")
         append("don't copy it into the note.\n")
         val category = note.category
         if (category != null) {
@@ -68,7 +90,7 @@ class NoteAssistant(
                 append(related.joinToString(", ") { "\"$it\"" })
                 append(".\n")
             }
-        } else {
+        } else if (pickCategory) {
             append("The note has no category. Set \"category\" to the one that clearly fits, or \"\" if none does:\n")
             NoteCategory.entries.forEach { c ->
                 append("- ${c.key}: ${categoryContext(c).trim().ifEmpty { c.name }}\n")
@@ -120,6 +142,18 @@ class NoteAssistant(
         """.trimIndent()
 
         val NO_SUGGEST_RULE = "\n- \"added\": always []."
+
+        val SUMMARY_PROMPT = """
+            You summarise a person's note. You receive it as JSON:
+            {"title": string, "category": string, "blocks": [{"type": "text"|"checklist"|"task", "text": string, "checked": boolean}]}
+            Reply with JSON {"summary": string, "actions": [string]} and nothing else.
+            - "summary": one to three sentences with the main points and any decisions. Use only what the note says.
+              A line starting with "${NoteFormat.SUMMARY_MARK.trim()}" is an earlier summary: ignore it.
+            - "actions": things still to be done that the note states or clearly implies, each a short line
+              starting with a verb (max ${NoteFormat.MAX_ACTIONS}). Leave out ones already written as a task or
+              checklist item, and done ones. Use [] when there are none.
+            - Write in the same language as the note.
+        """.trimIndent()
 
         const val MAX_ADDED = 3
     }

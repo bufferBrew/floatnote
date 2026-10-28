@@ -19,6 +19,12 @@ object NoteFormat {
     /** Starts every line the AI added, so you can tell them from what you wrote. */
     const val ADDED_MARK = "✦ "
 
+    /** Starts the summary line ✦ Summarise puts at the top of a note. */
+    const val SUMMARY_MARK = "✦ Summary: "
+
+    /** Action items one ✦ Summarise may add. */
+    const val MAX_ACTIONS = 8
+
     fun toJson(note: Note): String {
         val blocks = JSONArray()
         note.blocks.filter { it.text.isNotBlank() }.forEach { block ->
@@ -75,6 +81,34 @@ object NoteFormat {
             .distinct()
             .take(max)
             .map { Block.Text(newId(), ADDED_MARK + it) }
+    }
+
+    /**
+     * Reads a summary reply, `{"summary": string, "actions": [string]}`, onto [base]: the summary
+     * becomes the first line (replacing an earlier summary), and action items the note doesn't
+     * already have are added as tasks at the end. Everything else is left exactly as it was.
+     */
+    fun summaryFromJson(reply: String, base: Note, newId: () -> String, strings: Strings, maxActions: Int = MAX_ACTIONS): Note {
+        val json = runCatching { JSONObject(stripFence(reply)) }
+            .getOrElse { throw AiException(strings.get(R.string.err_ai_not_note), it) }
+        val summary = json.optString("summary").trim()
+            .removePrefix(SUMMARY_MARK.trim()).removePrefix(ADDED_MARK.trim()).trim()
+        val rest = base.blocks.filterNot { it is Block.Text && it.text.startsWith(SUMMARY_MARK) }
+        val existing = rest.map { it.text.trim().lowercase() }.toSet()
+        val array = json.optJSONArray("actions")
+        val actions = (0 until (array?.length() ?: 0))
+            .map { array!!.optString(it).trim().removePrefix("- [ ]").removePrefix("-").trim() }
+            .filter { it.isNotEmpty() && it.lowercase() !in existing }
+            .distinctBy { it.lowercase() }
+            .take(maxActions)
+            .map { Block.Task(newId(), it) }
+        if (summary.isEmpty() && actions.isEmpty()) throw AiException(strings.get(R.string.err_summary_empty))
+        val head = if (summary.isNotEmpty()) {
+            listOf(Block.Text(newId(), SUMMARY_MARK + summary))
+        } else {
+            base.blocks.filter { it is Block.Text && it.text.startsWith(SUMMARY_MARK) }
+        }
+        return base.copy(blocks = head + rest + actions)
     }
 
     /** Some models wrap JSON in a ```json fence even when asked not to. */

@@ -28,7 +28,8 @@ Solo developer, main-branch workflow.
 - Kotlin · Jetpack Compose + Material 3
 - AGP 9.2.1 (built-in Kotlin) · Gradle 9.4.1 · Compose BOM 2026.06.00 — same as toddler-learn
 - Min SDK 26 (needed for TYPE_APPLICATION_OVERLAY) · Target/Compile SDK 37 · JVM 17 · single `:app` module
-- Persistence: Room v3 (notes with `pinned`, blocks, dictation history, vocabulary). Settings in
+- Persistence: Room v5 (notes with `pinned` and `category`, blocks, dictation history with its kept
+  recording's file name, vocabulary). Settings in
   SharedPreferences. Robolectric tests (`data/db/DatabaseTest`) run every migration.
 - Overlay: a foreground service that adds a `ComposeView` to `WindowManager`
   (`TYPE_APPLICATION_OVERLAY`). The service supplies its own Lifecycle /
@@ -65,7 +66,8 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   The app opens on the list. A note left blank is deleted on close instead of saved.
 
 - `overlay/`: the floating window.
-  - `OverlayService`: foreground service (`specialUse`) that owns the window; notification has Show/Close.
+  - `OverlayService`: foreground service (`specialUse`) that owns the window; notification has Show/Close,
+    and while recording the time plus Pause / Resume / Stop and add (reposted only when the phase changes).
   - `OverlayWindow`: one WindowManager window that is either the panel or the bubble; handles
     focus hand-off, opacity (content alpha, never window alpha), move/resize, and saves geometry via `OverlayPrefs`.
   - `OverlayUi.kt`: `OverlayBubble`, `OverlayPanel` and `OverlayRecordPill`. The panel hosts the same
@@ -85,6 +87,16 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - `voice/`: voice notes.
   - `VoiceController`: record → transcribe → `session.addTranscript(noteId, text)`. One per
     process (`FloatNoteApp.voice`), so bubble and editor share state. Keeps audio on failure for Retry.
+    A Whisper clip pauses for a call or alarm and resumes in the same clip (`AudioInterruptions`:
+    transient audio focus); the user can pause too (status strip, notification). It also transcribes
+    audio shared to the app (`transcribeFiles`, a queue; `FloatLaunchActivity` copies the files,
+    `SharedAudio` picks the extension the server reads the format from). Long clips are recorded as
+    back-to-back 5 MB files (`MediaRecorder.setNextOutputFile`, no gap) and sent in order, up to 2 hours.
+    If Whisper can't be used (no key, a settings problem, offline) a new recording falls back to the
+    phone's recognizer (`VoiceState.Recording.fallback`).
+  - Kept recordings: after transcription a clip goes to `data/RecordingStore` (`files/recordings`,
+    300 MB cap, not backed up) and its name to `dictations.audio`; History plays it or sends it again
+    (`FloatNoteApp.transcribeAgain`). Off with Settings → Voice → Keep recordings.
   - Two engines (`VoiceEngine`, chosen in Settings): Whisper (record, then upload) and Device
     (`AndroidLiveRecognizer`: the phone's default recognition service first, the "on-device"
     recognizer API only as fallback; switches if one hears speech but returns empty text;
@@ -101,7 +113,8 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - `data/VoiceRepository.kt` + `data/db/VoiceDao.kt`: dictation history (capped at 500) and vocabulary
   (Room v2, added by `AutoMigration(1, 2)`).
 - `ai/`: the AI step, OpenAI-compatible `/chat/completions` on the same key and server as Whisper.
-  `NoteAssistant.cleanUp` (per dictation, opt-in) and `organise` (✦ Organise in the editor);
+  `NoteAssistant.cleanUp` (per dictation, opt-in), `organise` (✦ Organise in the editor) and
+  `summarise` (✦ Summarise: a `✦ Summary:` line on top plus open action items as tasks, same Undo);
   `NoteFormat` is the pure JSON in/out with validation (a bad reply never replaces the note).
   The session (`NoteViewModel.onOrganise`) keeps lines dictated meanwhile, drops the result if you
   edited, and offers Undo until the note closes. Organise is given the note's category context
@@ -123,6 +136,9 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - Notes list: search (`NoteViewModel.query` → `searchResults`), long-press for Pin / Delete (Undo bar).
   The session also keeps undo/redo per open note (`onUndo` / `onRedo`).
 - `domain/NotesBackup.kt` + `data/NotesBackup.kt`: JSON export/import via the Storage Access Framework.
+- Markdown folder (Settings → Backup): `domain/NoteMarkdown` renders a note; `data/MarkdownExport` writes
+  one `.md` per note to a SAF folder; `ExportingNoteRepository` wraps the repository and updates a note's
+  file 3 s after its last save (rename follows the title, delete removes the file).
 - `util/Strings.kt`: user-facing text for classes without a Context. Every error message lives in
   strings.xml; JVM tests use `TestStrings`, which reads the real file.
 - `voice/RecognizerPolicy.kt`: the device recognizer's error/reconnect/switch decisions, pure and tested.

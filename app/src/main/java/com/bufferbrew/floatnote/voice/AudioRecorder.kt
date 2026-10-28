@@ -7,14 +7,25 @@ import java.io.File
 
 /** Records one clip at a time to a file. */
 interface AudioRecorder {
-    /** Starts recording into [output]. Throws if the mic can't be opened. */
-    fun start(output: File)
+    /**
+     * Starts recording into [output]. Throws if the mic can't be opened. When a file nears
+     * [segmentBytes], recording carries on, without a gap, in the file [next] returns.
+     */
+    fun start(output: File, segmentBytes: Long, next: () -> File)
 
     /** Loudness since the last call, 0f (silence) to 1f (peak). */
     fun level(): Float
 
-    /** Stops and finalises the file. False if the clip is unusable (e.g. stopped instantly). */
-    fun stop(): Boolean
+    /** Pauses and resumes the clip in place; the gap isn't in the file. */
+    fun pause()
+
+    fun resume()
+
+    /**
+     * Stops and finalises. The files recorded, in order; empty if the clip is unusable (stopped
+     * instantly). Unusable files are deleted.
+     */
+    fun stop(): List<File>
 }
 
 /**
@@ -24,7 +35,16 @@ interface AudioRecorder {
 class MediaAudioRecorder(private val context: Context) : AudioRecorder {
     private var recorder: MediaRecorder? = null
 
-    override fun start(output: File) {
+    /** Files recording has started in, in order. */
+    private val files = mutableListOf<File>()
+
+    /** Handed to the recorder to switch to, not started yet. */
+    private var upcoming: File? = null
+
+    /** The recorder stopped itself at the size limit (switching to the next file failed). */
+    private var reachedLimit = false
+
+    override fun start(output: File, segmentBytes: Long, next: () -> File) {
         val r = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             MediaRecorder(context)
         } else {
@@ -39,25 +59,60 @@ class MediaAudioRecorder(private val context: Context) : AudioRecorder {
             r.setAudioSamplingRate(SAMPLE_RATE)
             r.setAudioEncodingBitRate(BIT_RATE)
             r.setOutputFile(output.absolutePath)
+            if (segmentBytes > 0) r.setMaxFileSize(segmentBytes)
+            // Called on this (main) thread. Near the limit, hand over the next file; the recorder
+            // switches to it at a frame boundary, so nothing is lost between the two.
+            r.setOnInfoListener { mr, what, _ ->
+                when (what) {
+                    MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_APPROACHING -> {
+                        val file = next()
+                        if (runCatching { mr.setNextOutputFile(file) }.isSuccess) upcoming = file else file.delete()
+                    }
+                    MediaRecorder.MEDIA_RECORDER_INFO_NEXT_OUTPUT_FILE_STARTED -> {
+                        upcoming?.let { files += it }
+                        upcoming = null
+                    }
+                    MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED -> reachedLimit = true
+                }
+            }
             r.prepare()
             r.start()
         } catch (e: Exception) {
             r.release()
             throw e
         }
+        files.clear()
+        files += output
+        upcoming = null
+        reachedLimit = false
         recorder = r
     }
 
     override fun level(): Float =
         ((recorder?.maxAmplitude ?: 0) / MAX_AMPLITUDE).coerceIn(0f, 1f)
 
-    override fun stop(): Boolean {
-        val r = recorder ?: return false
+    override fun pause() {
+        recorder?.pause()
+    }
+
+    override fun resume() {
+        recorder?.resume()
+    }
+
+    override fun stop(): List<File> {
+        val r = recorder ?: return emptyList()
         recorder = null
-        // stop() throws if no audio was captured yet (stopped right after start).
-        val ok = runCatching { r.stop() }.isSuccess
+        // stop() throws if no audio was captured yet (stopped right after start, or right after
+        // switching files): then the last file is unusable. After the size limit it's already final.
+        val ok = runCatching { r.stop() }.isSuccess || reachedLimit
         r.release()
-        return ok
+        upcoming?.delete()
+        upcoming = null
+        val recorded = files.toList()
+        files.clear()
+        if (ok) return recorded
+        recorded.lastOrNull()?.delete()
+        return recorded.dropLast(1)
     }
 
     private companion object {

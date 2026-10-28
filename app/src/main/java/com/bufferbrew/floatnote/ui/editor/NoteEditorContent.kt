@@ -150,6 +150,7 @@ fun NoteEditorContent(
             actions = actions,
             recording = recording,
             organising = assist == AssistState.Working,
+            summarising = assist == AssistState.Summarising,
             onMic = voiceActions::onMicToggle,
             onShare = onShare,
             canUndo = canUndo,
@@ -299,6 +300,7 @@ private fun EditorToolbar(
     actions: NoteEditorActions,
     recording: Boolean,
     organising: Boolean,
+    summarising: Boolean,
     onMic: () -> Unit,
     onShare: (() -> Unit)?,
     canUndo: Boolean,
@@ -326,6 +328,11 @@ private fun EditorToolbar(
             onClick = actions::onOrganise,
             dense = dense,
         )
+        PillButton(
+            text = stringResource(if (summarising) R.string.ai_summarising else R.string.ai_summarise),
+            onClick = actions::onSummarise,
+            dense = dense,
+        )
         if (canUndo) PillButton(stringResource(R.string.edit_undo), actions::onUndo, dense = dense)
         if (canRedo) PillButton(stringResource(R.string.edit_redo), actions::onRedo, dense = dense)
         PillButton(stringResource(R.string.block_text), { actions.onChangeType(BlockType.Text) }, dense = dense)
@@ -349,7 +356,7 @@ private fun EditorToolbar(
     }
 }
 
-/** The Organise step's progress, result (with Undo) or error. Nothing when idle. */
+/** The AI step's progress, result (with Undo) or error. Nothing when idle. */
 @Composable
 private fun AssistStatus(
     assist: AssistState,
@@ -370,6 +377,8 @@ private fun AssistStatus(
         val message = when (assist) {
             AssistState.Working -> stringResource(R.string.ai_organising)
             AssistState.Done -> stringResource(R.string.ai_organised)
+            AssistState.Summarising -> stringResource(R.string.ai_summarising)
+            AssistState.Summarised -> stringResource(R.string.ai_summarised)
             is AssistState.Error -> assist.message
             AssistState.Idle -> ""
         }
@@ -383,9 +392,9 @@ private fun AssistStatus(
             TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.settings)) }
         }
         when (assist) {
-            AssistState.Working ->
+            AssistState.Working, AssistState.Summarising ->
                 TextButton(onClick = actions::onDismissAssist) { Text(stringResource(R.string.cancel)) }
-            AssistState.Done -> {
+            AssistState.Done, AssistState.Summarised -> {
                 TextButton(onClick = actions::onUndoOrganise) { Text(stringResource(R.string.ai_undo)) }
                 TextButton(onClick = actions::onDismissAssist) { Text(stringResource(R.string.ai_keep)) }
             }

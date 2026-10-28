@@ -93,4 +93,30 @@ class NoteFormatTest {
         // Off unless asked for.
         assertEquals(listOf("Call mum"), NoteFormat.fromJson(reply, base, newId, TestStrings).blocks.map { it.text })
     }
+
+    @Test
+    fun `a summary goes on top and new action items become tasks at the end`() {
+        val reply = """{"summary":"Errands for the weekend.","actions":["Buy milk","Pay rent","Book the vet","book the vet",""]}"""
+        val out = NoteFormat.summaryFromJson(reply, base.copy(blocks = base.blocks + Block.Task("c", "Buy milk")), newId, TestStrings)
+        assertEquals(NoteFormat.SUMMARY_MARK + "Errands for the weekend.", out.blocks.first().text)
+        // Existing blocks are untouched; only "Book the vet" is new.
+        assertEquals(listOf("a", "b", "c"), out.blocks.drop(1).take(3).map { it.id })
+        assertEquals(listOf("Book the vet"), out.blocks.drop(4).map { it.text })
+        assertTrue(out.blocks.last() is Block.Task)
+    }
+
+    @Test
+    fun `summarising again replaces the earlier summary`() {
+        val summarised = base.copy(blocks = listOf(Block.Text("s", NoteFormat.SUMMARY_MARK + "old")) + base.blocks)
+        val out = NoteFormat.summaryFromJson("""{"summary":"new","actions":[]}""", summarised, newId, TestStrings)
+        assertEquals(listOf(NoteFormat.SUMMARY_MARK + "new", "um buy milk and call mum", "pay rent"), out.blocks.map { it.text })
+    }
+
+    @Test
+    fun `an empty summary reply leaves the note alone`() {
+        assertThrows(AiException::class.java) {
+            NoteFormat.summaryFromJson("""{"summary":"","actions":[]}""", base, newId, TestStrings)
+        }
+        assertThrows(AiException::class.java) { NoteFormat.summaryFromJson("not json", base, newId, TestStrings) }
+    }
 }

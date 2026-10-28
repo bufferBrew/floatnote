@@ -4,10 +4,13 @@
     phone, so a restored copy of voice_secret.xml could never be decrypted: leave it out of backups.
 -->
 <data-extraction-rules>
+    <!-- Kept recordings are left out too: large, and only useful on this phone. -->
     <cloud-backup>
         <exclude domain="sharedpref" path="voice_secret.xml" />
+        <exclude domain="file" path="recordings/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="voice_secret.xml" />
+        <exclude domain="file" path="recordings/" />
     </device-transfer>
 </data-extraction-rules>

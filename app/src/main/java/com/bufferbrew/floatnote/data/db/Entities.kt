@@ -65,6 +65,8 @@ data class DictationEntity(
     /** What the recognizer heard, when it differs from [text]. */
     val raw: String?,
     val createdAt: Long,
+    /** The kept recording's file name ([com.bufferbrew.floatnote.data.RecordingStore]); null for the device engine. */
+    val audio: String? = null,
 )
 
 /** A vocabulary word. With a [replacement], heard [term] is rewritten to it. */

@@ -2,4 +2,6 @@
 <!-- Android 11 and older; see data_extraction_rules.xml for why voice_secret.xml is excluded. -->
 <full-backup-content>
     <exclude domain="sharedpref" path="voice_secret.xml" />
+    <!-- Kept recordings: large, and only useful on this phone. -->
+    <exclude domain="file" path="recordings/" />
 </full-backup-content>

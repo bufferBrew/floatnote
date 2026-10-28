@@ -7,6 +7,8 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -14,6 +16,7 @@ class TranscriptPipelineTest {
     private val scope = TestScope(StandardTestDispatcher())
     private val added = mutableListOf<Pair<String, String>>()
     private val history = mutableListOf<Triple<String, String, String>>()
+    private val audio = mutableListOf<java.io.File?>()
     private var cleanup = false
     private var cleaner: suspend (String, List<String>) -> String = { t, _ -> t }
 
@@ -23,7 +26,7 @@ class TranscriptPipelineTest {
         cleanupEnabled = { cleanup },
         cleanUp = { t, v -> cleaner(t, v) },
         addToNote = { id, t, _ -> added += id to t },
-        addToHistory = { id, t, raw -> history += Triple(id, t, raw) },
+        addToHistory = { id, t, raw, file -> history += Triple(id, t, raw); audio += file },
     )
 
     @Test
@@ -62,5 +65,25 @@ class TranscriptPipelineTest {
         pipeline.submit("n", "   ")
         scope.runCurrent()
         assertEquals(emptyList<Pair<String, String>>(), added)
+    }
+
+    @Test
+    fun `a clip goes to the history with its text`() {
+        val clip = kotlin.io.path.createTempFile().toFile()
+        pipeline.submit("n", "hello", audio = clip)
+        scope.runCurrent()
+        assertEquals(listOf(clip), audio)
+        assertTrue(clip.exists())
+    }
+
+    @Test
+    fun `a clip whose text ends up blank is deleted`() {
+        cleanup = true
+        cleaner = { _, _ -> " " }
+        val clip = kotlin.io.path.createTempFile().toFile()
+        pipeline.submit("n", "um", audio = clip)
+        scope.runCurrent()
+        assertTrue(added.isEmpty())
+        assertFalse(clip.exists())
     }
 }

@@ -1,24 +1,35 @@
 package com.bufferbrew.floatnote
 
 import android.Manifest
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
+import androidx.lifecycle.lifecycleScope
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import com.bufferbrew.floatnote.overlay.OverlayPrefs
 import com.bufferbrew.floatnote.overlay.openFloatingNote
+import com.bufferbrew.floatnote.voice.SharedAudio
 import com.bufferbrew.floatnote.voice.hasMicPermission
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * The "Float note" launcher entry, the one to add to the Samsung Edge panel (or any launcher).
- * The Quick Settings tile, the app shortcuts and "Share to FloatNote" come through here too.
+ * The Quick Settings tile, the app shortcuts and "Share to FloatNote" (text, or audio to
+ * transcribe) come through here too.
  * It has no UI: it opens the floating window over whatever you were doing and finishes at once.
  * Being a visible Activity for that instant is what lets it start the foreground service,
  * including its microphone type.
@@ -42,10 +53,17 @@ class FloatLaunchActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (savedInstanceState != null) return // re-created mid prompt; the result callback finishes
+        val sharing = intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE
+        if (savedInstanceState != null) {
+            // Re-created mid prompt: the result callback finishes. A share still copying lost its
+            // work with the old instance; finish rather than sit invisible over the screen.
+            if (sharing) finish()
+            return
+        }
 
-        if (intent.action == Intent.ACTION_SEND) {
-            openShared()
+        if (sharing) {
+            val audio = sharedAudio()
+            if (audio.isNotEmpty()) openSharedAudio(audio) else openShared()
             return
         }
         // Static shortcut extras may arrive as a boolean or as the string "true".
@@ -69,12 +87,109 @@ class FloatLaunchActivity : ComponentActivity() {
         if (text.isNotBlank() || subject.isNotBlank()) app.session.createNote(subject, text)
         // Any app can share to us, so a shared note never starts recording by itself.
         app.voice.autoRecordBlockedFor = app.session.note?.id
+        showNoteAndFinish()
+    }
+
+    private fun showNoteAndFinish() {
         if (Settings.canDrawOverlays(this)) {
             openFloatingNote()
         } else {
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
         finish()
+    }
+
+    /** Audio files in a share, at most [SharedAudio.MAX_FILES]. Empty for anything else. */
+    private fun sharedAudio(): List<Uri> {
+        val type = intent.type.orEmpty()
+        if (!type.startsWith("audio/") && type != "application/ogg") return emptyList()
+        val uris = if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
+        } else {
+            listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
+        }
+        // Only content another app granted us. A file:// path, or a URI of our own, could make us
+        // read (and upload) our own private files on a caller's say-so.
+        return uris.filter { it.scheme == ContentResolver.SCHEME_CONTENT && it.authority?.startsWith(packageName) != true }
+            .take(SharedAudio.MAX_FILES)
+    }
+
+    /**
+     * Shared audio (a voice message, a recording) becomes a new note holding its transcript, sent
+     * through the same Whisper upload as a recording. This stays open, invisibly, while it copies
+     * the files, because the read access the sharing app granted lasts only as long as it does.
+     */
+    private fun openSharedAudio(uris: List<Uri>) {
+        if (app.voice.isBusy) {
+            Toast.makeText(this, R.string.share_audio_busy, Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        lifecycleScope.launch {
+            val copied = withContext(Dispatchers.IO) {
+                uris.mapIndexedNotNull { i, uri ->
+                    val name = displayName(uri)
+                    val ext = SharedAudio.extension(name, contentResolver.getType(uri) ?: intent.type)
+                    val file = File(cacheDir, "shared-$i.$ext")
+                    if (copyShared(uri, file)) name to file else null
+                }
+            }
+            if (copied.isEmpty()) {
+                Toast.makeText(this@FloatLaunchActivity, R.string.share_audio_unreadable, Toast.LENGTH_LONG).show()
+                finish()
+                return@launch
+            }
+            if (copied.size < uris.size) {
+                Toast.makeText(this@FloatLaunchActivity, R.string.share_audio_some_skipped, Toast.LENGTH_LONG).show()
+            }
+            val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()
+            // A title, so the note isn't blank (and deleted on close) before the transcript arrives.
+            val title = subject.ifBlank { SharedAudio.title(copied.first().first) ?: getString(R.string.shared_audio_title) }
+            app.session.createNote(title, "")
+            val noteId = app.session.note?.id
+            if (noteId == null) {
+                copied.forEach { it.second.delete() }
+                finish()
+                return@launch
+            }
+            app.voice.autoRecordBlockedFor = noteId
+            val clips = copied.mapIndexed { i, (_, file) ->
+                val clip = app.voice.sharedClipFile(noteId, i, file.extension)
+                if (file.renameTo(clip)) clip else file
+            }
+            if (!app.voice.transcribeFiles(clips, noteId)) {
+                Toast.makeText(this@FloatLaunchActivity, R.string.share_audio_busy, Toast.LENGTH_LONG).show()
+            }
+            showNoteAndFinish()
+        }
+    }
+
+    private fun displayName(uri: Uri): String? = runCatching {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    }.getOrNull()
+
+    /** Copies at most [SharedAudio.MAX_BYTES]; false (and nothing left behind) if it can't. */
+    private fun copyShared(uri: Uri, to: File): Boolean {
+        val ok = runCatching {
+            contentResolver.openInputStream(uri)?.use { input ->
+                to.outputStream().use { output ->
+                    val buffer = ByteArray(COPY_BUFFER)
+                    var total = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        if (total > SharedAudio.MAX_BYTES) return@use false
+                        output.write(buffer, 0, read)
+                    }
+                    total > 0
+                }
+            } ?: false
+        }.getOrDefault(false)
+        if (!ok) to.delete()
+        return ok
     }
 
     /** Android 13+: without this the floating note's notification (Show/Close) never appears. Asked once. */
@@ -130,6 +245,7 @@ class FloatLaunchActivity : ComponentActivity() {
         const val EXTRA_NEW_NOTE = "new_note"
         private const val KEY_ASKED = "asked_mic"
         private const val KEY_ASKED_NOTIFICATIONS = "asked_notifications"
+        private const val COPY_BUFFER = 64 * 1024
 
         /** Asks for the mic, then (re)opens the floating note. Usable from the overlay. */
         fun requestMicIntent(context: Context): Intent =

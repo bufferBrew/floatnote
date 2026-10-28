@@ -288,14 +288,24 @@ class NoteViewModel(
      * note in the meantime, the result is dropped rather than overwrite your edit.
      */
     override fun onOrganise() {
-        val snapshot = note ?: return
-        if (assist == AssistState.Working) return
         val organiser = organiser ?: return
+        runAssist(AssistState.Working, AssistState.Done, organiser::organise)
+    }
+
+    /** Like [onOrganise] (same checks, same Undo), but only adds a summary and action items. */
+    override fun onSummarise() {
+        val organiser = organiser ?: return
+        runAssist(AssistState.Summarising, AssistState.Summarised, organiser::summarise)
+    }
+
+    private fun runAssist(working: AssistState, done: AssistState, work: suspend (Note) -> Note) {
+        val snapshot = note ?: return
+        if (assist == AssistState.Working || assist == AssistState.Summarising) return
         // Cancelled by closing the note (resetAssist), so a late result can't land in another note.
-        assist = AssistState.Working
+        assist = working
         organiseJob = viewModelScope.launch {
             val result = try {
-                organiser.organise(snapshot)
+                work(snapshot)
             } catch (e: AiException) {
                 assist = AssistState.Error(e.message ?: strings.get(R.string.err_organise_failed), e.needsSettings)
                 return@launch
@@ -321,7 +331,7 @@ class NoteViewModel(
                     category = current.category ?: result.category,
                 )
             }
-            assist = AssistState.Done
+            assist = done
         }
     }
 

@@ -24,6 +24,9 @@ interface NoteEditorActions {
 
     /** AI: restructure the open note. */
     fun onOrganise()
+
+    /** AI: add a summary line and the open action items as tasks. */
+    fun onSummarise()
     fun onUndoOrganise()
     fun onDismissAssist()
 }

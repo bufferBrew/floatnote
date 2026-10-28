@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.ai.CategoryContext
 import com.bufferbrew.floatnote.ai.labelRes
+import com.bufferbrew.floatnote.data.RecordingStore
 import com.bufferbrew.floatnote.domain.model.NoteCategory
 import com.bufferbrew.floatnote.net.CheckLine
 import com.bufferbrew.floatnote.net.ConnectionCheck
@@ -61,6 +62,8 @@ fun SettingsContent(
     categories: CategoryContext,
     /** Runs "Test connection" on the API and AI pages. */
     connectionCheck: ConnectionCheck,
+    /** Kept Whisper recordings: the Voice page's switch and "Delete recordings". */
+    recordings: RecordingStore,
     micGranted: Boolean,
     onRequestMic: () -> Unit,
     openNewNote: Boolean,
@@ -69,6 +72,10 @@ fun SettingsContent(
     onImport: () -> Unit,
     /** Result of the last export or import, shown on the Backup page. */
     backupMessage: String?,
+    /** The Markdown export folder's name, or null when it's off. */
+    markdownFolder: String?,
+    onChooseMarkdownFolder: () -> Unit,
+    onStopMarkdown: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -90,11 +97,11 @@ fun SettingsContent(
         }
         when (current) {
             null -> SettingsMenu(onOpen = { page = it })
-            SettingsPage.Voice -> VoicePage(settings, micGranted, onRequestMic)
+            SettingsPage.Voice -> VoicePage(settings, recordings, micGranted, onRequestMic)
             SettingsPage.Api -> ApiPage(settings, connectionCheck)
             SettingsPage.Ai -> AiPage(settings, categories, connectionCheck)
             SettingsPage.Floating -> FloatingPage(openNewNote, onOpenNewNoteChange)
-            SettingsPage.Backup -> BackupPage(onExport, onImport, backupMessage)
+            SettingsPage.Backup -> BackupPage(onExport, onImport, backupMessage, markdownFolder, onChooseMarkdownFolder, onStopMarkdown)
         }
     }
 }
@@ -134,8 +141,10 @@ private fun SettingsMenu(onOpen: (SettingsPage) -> Unit) {
 }
 
 @Composable
-private fun VoicePage(settings: VoiceSettings, micGranted: Boolean, onRequestMic: () -> Unit) {
+private fun VoicePage(settings: VoiceSettings, recordings: RecordingStore, micGranted: Boolean, onRequestMic: () -> Unit) {
     var autoRecord by remember { mutableStateOf(settings.autoRecord) }
+    var keepRecordings by remember { mutableStateOf(settings.keepRecordings) }
+    var recordingsBytes by remember { mutableStateOf(recordings.size()) }
     var engine by remember { mutableStateOf(settings.engine) }
     var model by remember { mutableStateOf(settings.model) }
     var language by remember { mutableStateOf(settings.language) }
@@ -193,6 +202,32 @@ private fun VoicePage(settings: VoiceSettings, micGranted: Boolean, onRequestMic
             onCheckedChange = {
                 autoRecord = it
                 settings.autoRecord = it
+            },
+        )
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs)) {
+            Text(stringResource(R.string.settings_keep_recordings))
+            Text(
+                stringResource(R.string.settings_keep_recordings_help),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+        }
+        AppSwitch(
+            checked = keepRecordings,
+            onCheckedChange = {
+                keepRecordings = it
+                settings.keepRecordings = it
+            },
+        )
+    }
+    if (recordingsBytes > 0) {
+        PillButton(
+            stringResource(R.string.settings_delete_recordings, recordingsBytes / (1024 * 1024)),
+            {
+                recordings.clear()
+                recordingsBytes = 0
             },
         )
     }
@@ -455,7 +490,14 @@ private fun FloatingPage(openNewNote: Boolean, onOpenNewNoteChange: (Boolean) ->
 }
 
 @Composable
-private fun BackupPage(onExport: () -> Unit, onImport: () -> Unit, message: String?) {
+private fun BackupPage(
+    onExport: () -> Unit,
+    onImport: () -> Unit,
+    message: String?,
+    markdownFolder: String?,
+    onChooseMarkdownFolder: () -> Unit,
+    onStopMarkdown: () -> Unit,
+) {
     Text(stringResource(R.string.settings_page_backup), style = MaterialTheme.typography.headlineSmall)
     Text(
         stringResource(R.string.backup_help),
@@ -468,6 +510,24 @@ private fun BackupPage(onExport: () -> Unit, onImport: () -> Unit, message: Stri
     }
     if (message != null) {
         Text(message, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+    Text(stringResource(R.string.markdown_title), style = MaterialTheme.typography.titleMedium)
+    Text(
+        stringResource(R.string.markdown_help),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (markdownFolder != null) {
+        Text(stringResource(R.string.markdown_saving_to, markdownFolder), style = MaterialTheme.typography.bodyMedium)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+        PillButton(
+            stringResource(if (markdownFolder == null) R.string.markdown_choose else R.string.markdown_change),
+            onChooseMarkdownFolder,
+            selected = markdownFolder == null,
+        )
+        if (markdownFolder != null) PillButton(stringResource(R.string.markdown_stop), onStopMarkdown)
     }
 }
 

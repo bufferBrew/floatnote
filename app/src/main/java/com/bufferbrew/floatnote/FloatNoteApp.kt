@@ -1,20 +1,29 @@
 package com.bufferbrew.floatnote
 
 import android.app.Application
+import android.net.ConnectivityManager
+import android.net.Uri
+import android.net.NetworkCapabilities
+import android.widget.Toast
 import com.bufferbrew.floatnote.ai.CategoryContext
 import com.bufferbrew.floatnote.ai.ChatClient
 import com.bufferbrew.floatnote.ai.NoteAssistant
+import com.bufferbrew.floatnote.data.ExportingNoteRepository
+import com.bufferbrew.floatnote.data.MarkdownExport
 import com.bufferbrew.floatnote.data.NoteRepository
+import com.bufferbrew.floatnote.data.RecordingStore
 import com.bufferbrew.floatnote.data.RoomNoteRepository
 import com.bufferbrew.floatnote.data.RoomVoiceRepository
 import com.bufferbrew.floatnote.data.VoiceRepository
 import com.bufferbrew.floatnote.data.db.FloatNoteDatabase
 import com.bufferbrew.floatnote.domain.Vocabulary
 import com.bufferbrew.floatnote.net.ConnectionCheck
+import com.bufferbrew.floatnote.domain.model.Dictation
 import com.bufferbrew.floatnote.domain.model.VocabEntry
 import com.bufferbrew.floatnote.ui.editor.NoteViewModel
 import com.bufferbrew.floatnote.util.strings
 import com.bufferbrew.floatnote.voice.AndroidLiveRecognizer
+import com.bufferbrew.floatnote.voice.AudioFocusInterruptions
 import com.bufferbrew.floatnote.voice.MediaAudioRecorder
 import com.bufferbrew.floatnote.voice.TranscriptPipeline
 import com.bufferbrew.floatnote.voice.VoiceController
@@ -32,10 +41,28 @@ import java.io.File
 class FloatNoteApp : Application() {
     private val database by lazy { FloatNoteDatabase.create(this) }
 
-    val repository: NoteRepository by lazy { RoomNoteRepository(database.noteDao()) }
+    /** The Markdown folder (Settings → Backup), kept up to date by [repository]. */
+    val markdownExport: MarkdownExport by lazy { MarkdownExport(this) }
+
+    private val exportingRepository by lazy {
+        ExportingNoteRepository(RoomNoteRepository(database.noteDao()), markdownExport, persistScope)
+    }
+
+    val repository: NoteRepository get() = exportingRepository
+
+    /** Picks (or with null, stops) the Markdown folder; a new folder gets every note at once. */
+    suspend fun setMarkdownFolder(tree: Uri?) {
+        markdownExport.setFolder(tree)
+        exportingRepository.exportAll()
+    }
+
+    /** Whisper recordings kept after transcription, for History's playback. */
+    val recordings: RecordingStore by lazy {
+        RecordingStore(File(filesDir, "recordings"), enabled = { voiceSettings.keepRecordings })
+    }
 
     /** Dictation history and the vocabulary. */
-    val voiceRepository: VoiceRepository by lazy { RoomVoiceRepository(database.voiceDao()) }
+    val voiceRepository: VoiceRepository by lazy { RoomVoiceRepository(database.voiceDao(), recordings = recordings) }
 
     /** Outlives any screen, so saves started as a screen closes still finish. */
     val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -85,7 +112,9 @@ class FloatNoteApp : Application() {
             cleanupEnabled = { voiceSettings.aiCleanup && voiceSettings.llmConfig() != null },
             cleanUp = assistant::cleanUp,
             addToNote = session::addTranscript,
-            addToHistory = voiceRepository::addDictation,
+            addToHistory = { noteId, text, raw, audio ->
+                voiceRepository.addDictation(noteId, text, raw, recordings.keep(audio))
+            },
         )
     }
 
@@ -101,10 +130,37 @@ class FloatNoteApp : Application() {
             configProblem = voiceSettings::configProblem,
             language = { voiceSettings.language },
             hints = { Vocabulary.hints(vocabulary.value) },
-            audioDir = File(cacheDir, "voice").apply { mkdirs() },
+            audioDir = voiceClips.apply { mkdirs() },
             scope = mainScope,
             onTranscript = transcripts::submit,
+            interruptions = AudioFocusInterruptions(this),
+            online = ::isOnline,
         )
+    }
+
+    private val voiceClips get() = File(cacheDir, "voice")
+
+    /**
+     * Sends a kept recording through Whisper again; the new text is added to its note. False if
+     * there's no recording or a recording or upload is already going.
+     */
+    fun transcribeAgain(dictation: Dictation): Boolean {
+        val audio = recordings.file(dictation.audio) ?: return false
+        if (voice.isBusy) return false
+        val copy = voice.sharedClipFile(dictation.noteId, 0, audio.extension)
+        if (runCatching { audio.copyTo(copy, overwrite = true) }.isFailure) return false
+        return voice.transcribeFiles(listOf(copy), dictation.noteId)
+    }
+
+    /** [transcribeAgain], with a toast when it can't start (History's button). */
+    fun transcribeAgainOrSay(dictation: Dictation) {
+        if (!transcribeAgain(dictation)) Toast.makeText(this, R.string.history_transcribe_busy, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun isOnline(): Boolean {
+        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return true
+        val caps = connectivity.getNetworkCapabilities(connectivity.activeNetwork) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     private companion object {

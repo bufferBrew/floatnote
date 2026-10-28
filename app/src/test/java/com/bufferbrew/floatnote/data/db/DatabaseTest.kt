@@ -93,6 +93,37 @@ class DatabaseTest {
     }
 
     @Test
+    fun `migrating 4 to 5 adds audio, empty for existing dictations`() {
+        helper.createDatabase(DB, 4).use { v4 ->
+            v4.execSQL("INSERT INTO dictations (noteId, text, raw, createdAt) VALUES ('n1', 'hi', NULL, 5)")
+        }
+        helper.runMigrationsAndValidate(DB, 5, true).use { v5 ->
+            v5.query("SELECT text, audio FROM dictations").use {
+                it.moveToFirst()
+                assertEquals("hi", it.getString(0))
+                assertTrue(it.isNull(1))
+            }
+        }
+    }
+
+    @Test
+    fun `a dictation's recording is deleted with it and with the history`() = runBlocking {
+        val dir = java.nio.file.Files.createTempDirectory("rec").toFile()
+        val store = com.bufferbrew.floatnote.data.RecordingStore(java.io.File(dir, "recordings"), { true })
+        val repo = RoomVoiceRepository(db.voiceDao(), recordings = store)
+        fun kept(name: String) = store.keep(java.io.File(dir, name).apply { writeBytes(byteArrayOf(1)) })
+        repo.addDictation("n", "one", null, kept("a.m4a"))
+        repo.addDictation("n", "two", null, kept("b.m4a"))
+        val history = repo.observeHistory().first()
+        assertEquals("b.m4a", history[0].audio)
+        repo.deleteDictation(history[0].id)
+        assertNull(store.file("b.m4a"))
+        assertTrue(store.file("a.m4a") != null)
+        repo.clearHistory()
+        assertNull(store.file("a.m4a"))
+    }
+
+    @Test
     fun `category is saved, filters the list together with search, and lists related titles`() = runBlocking {
         var now = 0L
         val repo = RoomNoteRepository(db.noteDao(), clock = { ++now })

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.net.Uri
 import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -50,7 +51,9 @@ import com.bufferbrew.floatnote.voice.AutoRecordEffect
 import com.bufferbrew.floatnote.voice.hasMicPermission
 import androidx.lifecycle.lifecycleScope
 import com.bufferbrew.floatnote.data.NotesBackup
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -73,6 +76,21 @@ class MainActivity : ComponentActivity() {
         if (uri != null) runBackup { NotesBackup.import(this, app, uri) }
     }
 
+    /** The Markdown folder's name on the Backup page; null while exporting is off. */
+    private var markdownFolder by mutableStateOf<String?>(null)
+
+    private val chooseMarkdownFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        if (tree != null) setMarkdownFolder(tree)
+    }
+
+    private fun setMarkdownFolder(tree: Uri?) {
+        runBackup {
+            app.setMarkdownFolder(tree)
+            markdownFolder = withContext(Dispatchers.IO) { app.markdownExport.folderName() }
+            getString(if (tree == null) R.string.markdown_stopped else R.string.markdown_done)
+        }
+    }
+
     /** Asked once, before the first float, so the floating note's Show/Close notification appears. */
     private val requestNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         floatNow()
@@ -89,6 +107,7 @@ class MainActivity : ComponentActivity() {
         openNewNote = overlayPrefs.openNewNote
         showSettings = intent.getBooleanExtra(EXTRA_SETTINGS, false)
         askForMicOnce()
+        lifecycleScope.launch { markdownFolder = withContext(Dispatchers.IO) { app.markdownExport.folderName() } }
 
         setContent {
             // Ask for the mic here, not through FloatLaunchActivity, which would float the note.
@@ -110,6 +129,7 @@ class MainActivity : ComponentActivity() {
                                 settings = app.voiceSettings,
                                 categories = app.categoryContext,
                                 connectionCheck = app.connectionCheck,
+                                recordings = app.recordings,
                                 micGranted = micGranted,
                                 onRequestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) },
                                 openNewNote = openNewNote,
@@ -120,6 +140,9 @@ class MainActivity : ComponentActivity() {
                                 onExport = { exportNotes.launch("floatnote-backup.json") },
                                 onImport = { importNotes.launch(arrayOf("application/json", "text/plain", "*/*")) },
                                 backupMessage = backupMessage,
+                                markdownFolder = markdownFolder,
+                                onChooseMarkdownFolder = { chooseMarkdownFolder.launch(null) },
+                                onStopMarkdown = { setMarkdownFolder(null) },
                                 onBack = {
                                     showSettings = false
                                     backupMessage = null
@@ -166,6 +189,8 @@ class MainActivity : ComponentActivity() {
                                     onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteDictation(id) } },
                                     onClear = { app.persistScope.launch { app.voiceRepository.clearHistory() } },
                                     onUseOriginal = { session.useOriginal(it.noteId, it.text, it.raw ?: it.text) },
+                                    audioOf = { app.recordings.file(it.audio) },
+                                    onTranscribeAgain = { app.transcribeAgainOrSay(it) },
                                     modifier = Modifier.weight(1f),
                                 )
                             }

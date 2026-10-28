@@ -50,6 +50,7 @@ import kotlin.math.sqrt
 /** What the editor's voice controls can ask for. */
 interface VoiceActions {
     fun onMicToggle()
+    fun onPauseToggle()
     fun onRetry()
     fun onCancel()
     fun onOpenSettings()
@@ -85,6 +86,8 @@ class AppVoiceActions(
         }
         app.voice.toggle(noteId)
     }
+
+    override fun onPauseToggle() = app.voice.togglePause()
 
     override fun onRetry() = app.voice.retry()
 
@@ -152,11 +155,27 @@ fun VoiceStatus(voiceState: () -> VoiceState, actions: VoiceActions, modifier: M
                         modifier = Modifier.weight(1f),
                     )
                     Text(
-                        stringResource(R.string.voice_listening, formatElapsed(state.elapsedMs)),
+                        stringResource(
+                            when {
+                                state.paused -> R.string.voice_paused
+                                state.fallback -> R.string.voice_listening_phone
+                                else -> R.string.voice_listening
+                            },
+                            formatElapsed(state.elapsedMs),
+                        ),
                         style = MaterialTheme.typography.labelMedium,
                         color = colors.onSurfaceVariant,
                         modifier = Modifier.padding(start = Dimens.SpaceS),
                     )
+                    // Whisper clips only: the device recognizer can't pause mid-dictation.
+                    if (state.canPause) {
+                        CircleButton(
+                            if (state.paused) "▶" else "❚❚",
+                            stringResource(if (state.paused) R.string.voice_resume else R.string.voice_pause),
+                            actions::onPauseToggle,
+                            dense = true,
+                        )
+                    }
                     CircleButton("✓", stringResource(R.string.voice_done), actions::onMicToggle, dense = true)
                 }
                 // Device engine: the sentence being heard, before it lands in the note.
@@ -245,7 +264,8 @@ fun Waveform(
     }
 }
 
-private fun formatElapsed(ms: Long): String {
+/** m:ss, for the recording time. */
+fun formatElapsed(ms: Long): String {
     val seconds = ms / 1000
     return "%d:%02d".format(seconds / 60, seconds % 60)
 }

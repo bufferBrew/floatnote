@@ -48,7 +48,7 @@ class WhisperClient(
             .apply { if (config.language.isNotBlank()) addFormDataPart("language", config.language) }
             // Vocabulary hints: Whisper leans towards spellings it sees in the prompt.
             .apply { if (config.prompt.isNotBlank()) addFormDataPart("prompt", config.prompt) }
-            .addFormDataPart("file", audio.name, audio.asRequestBody(AUDIO_TYPE))
+            .addFormDataPart("file", audio.name, audio.asRequestBody(audioType(audio.extension)))
             .build()
         // A mistyped server address (no https://) would otherwise throw from url() and crash.
         val url = (config.baseUrl.trimEnd('/') + "/audio/transcriptions").toHttpUrlOrNull()
@@ -95,6 +95,14 @@ class WhisperClient(
     }
 
     private companion object {
-        val AUDIO_TYPE = "audio/mp4".toMediaType()
+        /** Servers go by the file name's extension; the type just matches it. Recordings are .m4a. */
+        fun audioType(extension: String) = when (extension.lowercase()) {
+            "mp3", "mpga", "mpeg" -> "audio/mpeg"
+            "wav" -> "audio/wav"
+            "ogg", "oga" -> "audio/ogg"
+            "webm" -> "audio/webm"
+            "flac" -> "audio/flac"
+            else -> "audio/mp4"
+        }.toMediaType()
     }
 }

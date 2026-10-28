@@ -469,4 +469,27 @@ class NoteViewModelTest {
         scope.runCurrent()
         assertNull(vm.note)
     }
+
+    @Test
+    fun `summarise adds to the note, and undo takes it back`() {
+        val vm = NoteViewModel(
+            repository, scope, TestStrings, NoteEditor { "new${++counter}" }, saveDelayMs = 400,
+            organiser = object : com.bufferbrew.floatnote.ai.NoteOrganiser {
+                override suspend fun organise(note: Note) = note
+                override suspend fun summarise(note: Note) =
+                    note.copy(blocks = listOf(Block.Text("s", "✦ Summary: short")) + note.blocks + Block.Task("t", "call"))
+            },
+        ).also {
+            it.ensureOpen()
+            scope.runCurrent()
+        }
+        val before = vm.note
+        vm.onSummarise()
+        assertEquals(AssistState.Summarising, vm.assist)
+        scope.runCurrent()
+        assertEquals(AssistState.Summarised, vm.assist)
+        assertEquals("✦ Summary: short", vm.note?.blocks?.first()?.text)
+        vm.onUndoOrganise()
+        assertEquals(before, vm.note)
+    }
 }

@@ -8,16 +8,18 @@ import androidx.room.RoomDatabase
 
 /**
  * Version 2 added dictation history and the vocabulary (new tables); version 3 added
- * `notes.pinned` (default 0); version 4 added `notes.category` (null). All are Room auto-migrations that keep every existing note, and
+ * `notes.pinned` (default 0); version 4 added `notes.category` (null); version 5 added
+ * `dictations.audio` (null). All are Room auto-migrations that keep every existing note, and
  * `DatabaseTest` checks each step. Never fall back to a destructive migration.
  */
 @Database(
     entities = [NoteEntity::class, BlockEntity::class, DictationEntity::class, VocabEntity::class],
-    version = 4,
+    version = 5,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
+        AutoMigration(from = 4, to = 5),
     ],
 )
 abstract class FloatNoteDatabase : RoomDatabase() {

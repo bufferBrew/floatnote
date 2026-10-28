@@ -371,6 +371,8 @@ fun OverlayPanel(
                             onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteDictation(id) } },
                             onClear = { app.persistScope.launch { app.voiceRepository.clearHistory() } },
                             onUseOriginal = { session.useOriginal(it.noteId, it.text, it.raw ?: it.text) },
+                            audioOf = { app.recordings.file(it.audio) },
+                            onTranscribeAgain = { app.transcribeAgainOrSay(it) },
                             modifier = bodyModifier,
                             compact = true,
                         )

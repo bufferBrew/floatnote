@@ -1,12 +1,16 @@
 package com.bufferbrew.floatnote.domain.model
 
-/** One dictation that went into a note. [raw] is what was heard, if clean-up changed it. */
+/**
+ * One dictation that went into a note. [raw] is what was heard, if clean-up changed it; [audio]
+ * names its kept recording, if there is one.
+ */
 data class Dictation(
     val id: Long,
     val noteId: String,
     val text: String,
     val raw: String?,
     val createdAt: Long,
+    val audio: String? = null,
 )
 
 /**

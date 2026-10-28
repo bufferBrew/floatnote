@@ -16,19 +16,42 @@ import android.provider.Settings
 import android.view.ContextThemeWrapper
 import android.view.Display
 import android.view.WindowManager
+import androidx.compose.runtime.snapshotFlow
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.bufferbrew.floatnote.FloatNoteApp
 import com.bufferbrew.floatnote.R
+import com.bufferbrew.floatnote.voice.VoiceState
+import com.bufferbrew.floatnote.voice.formatElapsed
 import com.bufferbrew.floatnote.voice.hasMicPermission
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 /**
  * Owns the floating window. Runs in the foreground so Android doesn't kill the note you're
- * writing while another app is in front; the notification also offers Show and Close.
+ * writing while another app is in front; the notification also offers Show and Close, and
+ * while a recording runs, its time and Pause / Resume / Stop.
  */
 class OverlayService : Service() {
 
     private var window: OverlayWindow? = null
+
+    private val app get() = application as FloatNoteApp
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** What the notification shows. Changes only when a recording starts, pauses or ends, not with each level sample. */
+    private enum class Phase { Idle, Recording, Paused, Transcribing }
+
+    private fun phase(state: VoiceState) = when (state) {
+        is VoiceState.Recording -> if (state.paused) Phase.Paused else Phase.Recording
+        VoiceState.Transcribing -> Phase.Transcribing
+        else -> Phase.Idle
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -40,7 +63,16 @@ class OverlayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val app = application as FloatNoteApp
+        if (intent?.action in RECORDING_ACTIONS) {
+            // A notification button: act on the recording, leave the window as it is.
+            if (window == null) stopSelf()
+            when (intent?.action) {
+                ACTION_PAUSE -> app.voice.pause()
+                ACTION_RESUME -> app.voice.resume()
+                ACTION_STOP_RECORDING -> app.voice.stop()
+            }
+            return START_NOT_STICKY
+        }
         val current = window ?: OverlayWindow(
             context = ContextThemeWrapper(overlayContext(), R.style.Theme_FloatNote),
             session = app.session,
@@ -73,10 +105,17 @@ class OverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         isRunning = true
+        scope.launch {
+            snapshotFlow { phase(app.voice.state) }
+                .distinctUntilChanged()
+                // Shown without asking again if notifications are off: it then just doesn't appear.
+                .collect { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification()) }
+        }
     }
 
     override fun onDestroy() {
         isRunning = false
+        scope.cancel()
         window?.destroy()
         window = null
         super.onDestroy()
@@ -112,16 +151,37 @@ class OverlayService : Service() {
         val close = PendingIntent.getService(
             this, 1, intent(this, ACTION_STOP), PendingIntent.FLAG_IMMUTABLE,
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.overlay_notification_title))
             .setContentText(getString(R.string.overlay_notification_text))
             .setContentIntent(show)
-            .addAction(0, getString(R.string.close_floating), close)
             .setOngoing(true)
             .setSilent(true)
-            .build()
+            .setOnlyAlertOnce(true)
+        when (val state = app.voice.state) {
+            is VoiceState.Recording -> {
+                if (state.paused) {
+                    builder.setContentTitle(getString(R.string.notification_paused, formatElapsed(state.elapsedMs)))
+                        .addAction(0, getString(R.string.notification_resume), action(ACTION_RESUME, 2))
+                } else {
+                    // The system counts up from here, so the notification isn't reposted every second.
+                    builder.setContentTitle(getString(R.string.notification_recording))
+                        .setUsesChronometer(true)
+                        .setShowWhen(true)
+                        .setWhen(System.currentTimeMillis() - state.elapsedMs)
+                    if (state.canPause) builder.addAction(0, getString(R.string.notification_pause), action(ACTION_PAUSE, 2))
+                }
+                builder.addAction(0, getString(R.string.notification_stop), action(ACTION_STOP_RECORDING, 3))
+            }
+            VoiceState.Transcribing -> builder.setContentTitle(getString(R.string.voice_transcribing))
+            else -> Unit
+        }
+        return builder.addAction(0, getString(R.string.close_floating), close).build()
     }
+
+    private fun action(action: String, requestCode: Int) =
+        PendingIntent.getService(this, requestCode, intent(this, action), PendingIntent.FLAG_IMMUTABLE)
 
     companion object {
         /** True while the floating window's service is alive (same process, main thread). */
@@ -130,6 +190,10 @@ class OverlayService : Service() {
 
         private const val ACTION_SHOW = "com.bufferbrew.floatnote.overlay.SHOW"
         private const val ACTION_STOP = "com.bufferbrew.floatnote.overlay.STOP"
+        private const val ACTION_PAUSE = "com.bufferbrew.floatnote.overlay.PAUSE_RECORDING"
+        private const val ACTION_RESUME = "com.bufferbrew.floatnote.overlay.RESUME_RECORDING"
+        private const val ACTION_STOP_RECORDING = "com.bufferbrew.floatnote.overlay.STOP_RECORDING"
+        private val RECORDING_ACTIONS = setOf(ACTION_PAUSE, ACTION_RESUME, ACTION_STOP_RECORDING)
         private const val CHANNEL_ID = "overlay"
         private const val NOTIFICATION_ID = 1
 

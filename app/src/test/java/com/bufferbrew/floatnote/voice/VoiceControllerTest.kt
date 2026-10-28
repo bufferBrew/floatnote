@@ -23,13 +23,51 @@ class VoiceControllerTest {
         var failStart = false
         var usable = true
         var recording: File? = null
-        override fun start(output: File) {
+        /** Every file of the current clip, as the recorder rolls over at the size limit. */
+        val files = mutableListOf<File>()
+        private var next: (() -> File)? = null
+        var segmentBytes = 0L
+        override fun start(output: File, segmentBytes: Long, next: () -> File) {
             if (failStart) throw IllegalStateException("mic busy")
             output.writeBytes(byteArrayOf(1))
             recording = output
+            files.clear()
+            files += output
+            this.next = next
+            this.segmentBytes = segmentBytes
         }
+        /** What MediaRecorder does near the size limit: carry on in the next file. */
+        fun rollOver() {
+            val file = next!!()
+            file.writeBytes(byteArrayOf(2))
+            files += file
+        }
+        var paused = false
         override fun level() = level
-        override fun stop(): Boolean { recording = null; return usable }
+        override fun pause() { paused = true }
+        override fun resume() { paused = false }
+        override fun stop(): List<File> {
+            recording = null
+            paused = false
+            val done = if (usable) files.toList() else emptyList()
+            if (!usable) files.forEach { it.delete() }
+            files.clear()
+            return done
+        }
+    }
+
+    /** Stands in for audio focus: the test calls [interrupt] and [end] as a call would. */
+    private class FakeInterruptions : AudioInterruptions {
+        var onPause: (() -> Unit)? = null
+        var onResume: (() -> Unit)? = null
+        val watching get() = onPause != null
+        override fun watch(onPause: () -> Unit, onResume: () -> Unit) {
+            this.onPause = onPause
+            this.onResume = onResume
+        }
+        override fun unwatch() { onPause = null; onResume = null }
+        fun interrupt() = onPause?.invoke()
+        fun end() = onResume?.invoke()
     }
 
     private class FakeTranscriber : Transcriber {
@@ -71,8 +109,12 @@ class VoiceControllerTest {
     private val transcriber = FakeTranscriber()
     private val live = FakeLive()
     private var engine = VoiceEngine.Whisper
+    private var online = true
     private var config: WhisperConfig? = WhisperConfig("k", "https://example.test/v1", "whisper-1", "")
     private val transcripts = mutableListOf<Pair<String, String>>()
+    /** Each transcript's "continues" flag, in order. */
+    private val joined = mutableListOf<Boolean>()
+    private val interruptions = FakeInterruptions()
 
     private val voice = VoiceController(
         strings = TestStrings,
@@ -84,11 +126,13 @@ class VoiceControllerTest {
         language = { "" },
         audioDir = dir,
         scope = scope,
-        onTranscript = { id, text, _ -> transcripts += id to text },
+        onTranscript = { id, text, continues, audio -> transcripts += id to text; joined += continues; audio?.delete() },
         clock = { scope.testScheduler.currentTime },
         sampleIntervalMs = 100,
         maxDurationMs = 10_000,
         finishTimeoutMs = 3_000,
+        interruptions = interruptions,
+        online = { online },
     )
 
     private fun silenceVoice() = VoiceController(
@@ -101,7 +145,7 @@ class VoiceControllerTest {
         language = { "" },
         audioDir = dir,
         scope = scope,
-        onTranscript = { id, text, _ -> transcripts += id to text },
+        onTranscript = { id, text, continues, audio -> transcripts += id to text; joined += continues; audio?.delete() },
         clock = { scope.testScheduler.currentTime },
         sampleIntervalMs = 100,
         maxDurationMs = 60_000,
@@ -159,7 +203,7 @@ class VoiceControllerTest {
             strings = TestStrings,
             recorder = recorder, transcriber = transcriber, liveRecognizer = live,
             engine = { VoiceEngine.Device }, config = { config }, language = { "" },
-            audioDir = dir, scope = scope, onTranscript = { _, _, continues -> flags += continues },
+            audioDir = dir, scope = scope, onTranscript = { _, _, continues, _ -> flags += continues },
             clock = { scope.testScheduler.currentTime },
         )
         v.start("n")
@@ -204,6 +248,7 @@ class VoiceControllerTest {
     @Test
     fun `missing key asks for settings and never opens the mic`() {
         config = null
+        live.unavailable = true
         voice.start("n")
         val error = voice.state as VoiceState.Error
         assertTrue(error.needsSettings)
@@ -415,7 +460,7 @@ class VoiceControllerTest {
         language = { "" },
         audioDir = dir,
         scope = scope,
-        onTranscript = { id, text, _ -> transcripts += id to text },
+        onTranscript = { id, text, continues, audio -> transcripts += id to text; joined += continues; audio?.delete() },
         clock = { scope.testScheduler.currentTime },
     )
 
@@ -445,5 +490,271 @@ class VoiceControllerTest {
     @Test
     fun `nothing left over means a clean start`() {
         assertEquals(VoiceState.Idle, restartedVoice().state)
+    }
+
+    private fun pauseVoice() = VoiceController(
+        strings = TestStrings,
+        recorder = recorder,
+        transcriber = transcriber,
+        liveRecognizer = live,
+        engine = { engine },
+        config = { config },
+        language = { "" },
+        audioDir = dir,
+        scope = scope,
+        onTranscript = { id, text, continues, audio -> transcripts += id to text; joined += continues; audio?.delete() },
+        clock = { scope.testScheduler.currentTime },
+        sampleIntervalMs = 100,
+        maxDurationMs = 60_000,
+        silenceTimeoutMs = 5_000,
+        interruptions = interruptions,
+        maxPauseMs = 20_000,
+    )
+
+    private val recordingState get() = voice.state as VoiceState.Recording
+
+    @Test
+    fun `a call pauses the clip and its end resumes the same clip`() {
+        voice.start("n")
+        assertTrue(interruptions.watching)
+        scope.advanceTimeBy(2_000)
+        interruptions.interrupt()
+        assertTrue(recorder.paused)
+        assertTrue(recordingState.paused)
+        scope.advanceTimeBy(30_000) // the call: longer than the 10 s limit, which must not count it
+        assertTrue(voice.isRecording)
+        interruptions.end()
+        assertFalse(recorder.paused)
+        scope.advanceTimeBy(1_000)
+        assertEquals(3_000.0, recordingState.elapsedMs.toDouble(), 150.0)
+        voice.stop()
+        scope.runCurrent()
+        assertEquals(1, transcriber.sent.size)
+        assertEquals(listOf("n" to "hello world"), transcripts)
+        assertFalse(interruptions.watching)
+    }
+
+    @Test
+    fun `a pause the user chose is not undone when focus comes back`() {
+        voice.start("n")
+        voice.pause()
+        interruptions.end()
+        assertTrue(recordingState.paused)
+        voice.togglePause()
+        assertFalse(recordingState.paused)
+        voice.cancel()
+    }
+
+    @Test
+    fun `silence is not timed while paused, and a long pause stops and sends`() {
+        val voice = pauseVoice()
+        voice.start("n")
+        scope.advanceTimeBy(1_000)
+        voice.pause()
+        recorder.level = 0f
+        scope.advanceTimeBy(10_000) // twice the silence timeout
+        assertTrue(voice.isRecording)
+        scope.advanceTimeBy(10_500) // past the 20 s pause limit
+        scope.runCurrent()
+        assertFalse(voice.isRecording)
+        assertEquals(listOf("n" to "hello world"), transcripts)
+    }
+
+    @Test
+    fun `resuming restarts the silence timer`() {
+        val voice = pauseVoice()
+        voice.start("n")
+        scope.advanceTimeBy(1_000)
+        voice.pause()
+        scope.advanceTimeBy(4_000)
+        recorder.level = 0f
+        voice.resume()
+        scope.advanceTimeBy(4_000) // 4 s of silence since resuming: under the 5 s timeout
+        assertTrue(voice.isRecording)
+        voice.cancel()
+    }
+
+    @Test
+    fun `the device engine can't pause and isn't watched`() {
+        engine = VoiceEngine.Device
+        voice.start("n")
+        assertFalse(recordingState.canPause)
+        assertFalse(interruptions.watching)
+        voice.pause()
+        assertFalse(recordingState.paused)
+        voice.cancel()
+    }
+
+    private fun sharedFile(name: String) = File(dir, name).apply { writeBytes(byteArrayOf(1)) }
+
+    @Test
+    fun `shared files are transcribed one after another into the note`() {
+        var n = 0
+        transcriber.reply = { "part ${++n}" }
+        val files = listOf(sharedFile("clip-1-s.ogg"), sharedFile("clip-2-s.mp3"))
+        assertTrue(voice.transcribeFiles(files, "s"))
+        scope.runCurrent()
+        assertEquals(files, transcriber.sent)
+        assertEquals(listOf("s" to "part 1", "s" to "part 2"), transcripts)
+        assertEquals(VoiceState.Idle, voice.state)
+        assertTrue(files.none { it.exists() })
+    }
+
+    @Test
+    fun `a shared file that fails waits for retry, then the rest follow`() {
+        var fail = true
+        transcriber.reply = { if (fail) throw TranscriptionException("offline") else "ok" }
+        val files = listOf(sharedFile("clip-1-s.ogg"), sharedFile("clip-2-s.ogg"))
+        voice.transcribeFiles(files, "s")
+        scope.runCurrent()
+        assertTrue((voice.state as VoiceState.Error).canRetry)
+        assertTrue(files.all { it.exists() })
+        fail = false
+        voice.retry()
+        scope.runCurrent()
+        assertEquals(listOf("s" to "ok", "s" to "ok"), transcripts)
+    }
+
+    @Test
+    fun `dismissing a failed share drops the files still waiting`() {
+        transcriber.reply = { throw TranscriptionException("offline") }
+        val files = listOf(sharedFile("clip-1-s.ogg"), sharedFile("clip-2-s.ogg"))
+        voice.transcribeFiles(files, "s")
+        scope.runCurrent()
+        voice.dismiss()
+        assertTrue(files.none { it.exists() })
+    }
+
+    @Test
+    fun `a share while recording is refused and its files deleted`() {
+        voice.start("n")
+        val file = sharedFile("clip-1-s.ogg")
+        assertFalse(voice.transcribeFiles(listOf(file), "s"))
+        assertFalse(file.exists())
+        assertTrue(voice.isRecording)
+        voice.cancel()
+    }
+
+    @Test
+    fun `a shared clip left by an earlier process is offered for retry`() {
+        sharedFile("clip-300-note-s.ogg")
+        val voice = restartedVoice()
+        assertTrue((voice.state as VoiceState.Error).canRetry)
+        voice.retry()
+        scope.runCurrent()
+        assertEquals(listOf("note-s" to "hello world"), transcripts)
+    }
+
+    @Test
+    fun `a long clip is recorded in parts, sent in order and joined into one paragraph`() {
+        var n = 0
+        transcriber.reply = { "part ${++n}" }
+        voice.start("n")
+        assertTrue(recorder.segmentBytes > 0)
+        scope.advanceTimeBy(1_000)
+        recorder.rollOver()
+        scope.advanceTimeBy(1_000)
+        recorder.rollOver()
+        val files = recorder.files.toList()
+        voice.stop()
+        scope.runCurrent()
+        assertEquals(files, transcriber.sent)
+        assertEquals(listOf("n" to "part 1", "n" to "part 2", "n" to "part 3"), transcripts)
+        assertEquals(listOf(false, true, true), joined)
+        assertEquals(VoiceState.Idle, voice.state)
+    }
+
+    @Test
+    fun `a failed part waits for retry and the later parts follow it`() {
+        var fail = true
+        transcriber.reply = { if (fail) throw TranscriptionException("offline") else "ok" }
+        voice.start("n")
+        recorder.rollOver()
+        voice.stop()
+        scope.runCurrent()
+        assertTrue((voice.state as VoiceState.Error).canRetry)
+        fail = false
+        voice.retry()
+        scope.runCurrent()
+        assertEquals(2, transcripts.size)
+        assertEquals(listOf(false, true), joined)
+    }
+
+    @Test
+    fun `the transcribed clip is handed over with its text, not deleted`() {
+        var handed: File? = null
+        val voice = VoiceController(
+            strings = TestStrings, recorder = recorder, transcriber = transcriber, liveRecognizer = live,
+            engine = { engine }, config = { config }, language = { "" }, audioDir = dir, scope = scope,
+            onTranscript = { _, _, _, audio -> handed = audio },
+            clock = { scope.testScheduler.currentTime },
+        )
+        voice.start("n")
+        val clip = recorder.recording
+        voice.stop()
+        scope.runCurrent()
+        assertEquals(clip, handed)
+        assertTrue(clip!!.exists())
+    }
+
+    @Test
+    fun `without a key, whisper falls back to the phone recognizer`() {
+        config = null
+        voice.start("n")
+        val state = voice.state as VoiceState.Recording
+        assertTrue(state.fallback)
+        assertFalse(state.canPause)
+        assertTrue(live.listener != null)
+        assertEquals(null, recorder.recording)
+        live.listener!!.onSegment("hello there")
+        assertEquals(listOf("n" to "hello there"), transcripts)
+        voice.cancel()
+    }
+
+    @Test
+    fun `offline, whisper falls back to the phone recognizer`() {
+        online = false
+        voice.start("n")
+        assertTrue((voice.state as VoiceState.Recording).fallback)
+        assertEquals(null, recorder.recording)
+        voice.cancel()
+    }
+
+    @Test
+    fun `offline with no phone recognizer still records a clip for later`() {
+        online = false
+        live.unavailable = true
+        voice.start("n")
+        val state = voice.state as VoiceState.Recording
+        assertFalse(state.fallback)
+        assertTrue(recorder.recording != null)
+        voice.cancel()
+    }
+
+    @Test
+    fun `a failed fallback keeps a clip waiting for retry`() {
+        transcriber.reply = { throw TranscriptionException("offline") }
+        voice.start("n")
+        voice.stop()
+        scope.runCurrent()
+        val kept = transcriber.sent.single()
+        config = null
+        live.unavailable = true
+        voice.start("n")
+        assertTrue((voice.state as VoiceState.Error).needsSettings)
+        assertTrue(kept.exists())
+    }
+
+    @Test
+    fun `every part of the newest note's clip survives a restart, in order`() {
+        val other = File(dir, "clip-50-note-a.m4a").apply { writeBytes(byteArrayOf(1)) }
+        val first = File(dir, "clip-100-note-b.m4a").apply { writeBytes(byteArrayOf(1)) }
+        val second = File(dir, "clip-200-note-b.m4a").apply { writeBytes(byteArrayOf(1)) }
+        val voice = restartedVoice()
+        assertFalse(other.exists())
+        voice.retry()
+        scope.runCurrent()
+        assertEquals(listOf(first, second), transcriber.sent)
+        assertEquals(listOf("note-b" to "hello world", "note-b" to "hello world"), transcripts)
     }
 }
