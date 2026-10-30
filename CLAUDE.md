@@ -74,8 +74,9 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
     `NoteListContent` / `NoteEditorContent` as the full app. The corner resizes freely down to one
     button; below 180×160 dp the panel becomes the record pill (tap records, ✕/✓ while recording,
     long-press restores the last full size, kept in `OverlayPrefs.fullPanel`). The minimised bubble
-    works the same way: tap records / stops, long-press opens the panel (a tap opens it while
-    transcribing or after an error).
+    works the same way: tap records, long-press opens the panel (a tap opens it while transcribing
+    or after an error). While recording, both widen into one `RecordingBar`: ✕, ❚❚/▶ (Whisper
+    clips only), the waveform (drag; tap stops in the bubble) and ✓.
   - `WindowDrag.kt`: drag/tap using raw screen coordinates, reported as the total offset since
     the drag started (the window is placed at start + offset, never stepped). Use it for anything that moves
     the window; Compose drag gestures jitter because the window moves under the finger.

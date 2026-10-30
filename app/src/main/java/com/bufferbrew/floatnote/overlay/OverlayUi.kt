@@ -11,6 +11,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -83,15 +84,18 @@ private const val BubbleBars = 5
 /**
  * The minimised state, in the style of Wispr Flow's floating bar: a small dark pill with a
  * waveform. While recording the bars follow your voice; while transcribing they pulse.
- * Drag it anywhere. Tap starts listening (and tap again stops and adds it to the note), like the
- * record pill; long-press opens the panel. While transcribing, or after an error, a tap opens the
- * panel instead, where Cancel, Retry and Settings are.
+ * Drag it anywhere. Tap starts listening; while recording it widens into the record pill's bar:
+ * ✕ (throw it away), pause, the waveform (tap it, or ✓, to stop and add it to the note). Long-press
+ * opens the panel. While transcribing, or after an error, a tap opens the panel instead, where
+ * Cancel, Retry and Settings are.
  */
 @Composable
 fun OverlayBubble(
     voiceState: () -> VoiceState,
     opacity: Float,
     onRecord: () -> Unit,
+    onCancel: () -> Unit,
+    onPauseToggle: () -> Unit,
     onOpen: () -> Unit,
     onDragStart: () -> Unit,
     onDrag: (Int, Int) -> Unit,
@@ -116,24 +120,63 @@ fun OverlayBubble(
         }
     )
     val openLabel = stringResource(R.string.open_floating_note)
-    Box(
+    val drag = Modifier
+        .windowDrag(onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap, onLongPress = onOpen)
+        .semantics {
+            role = Role.Button
+            contentDescription = label
+            onClick(label) { onTap(); true }
+            onLongClick(openLabel) { onOpen(); true }
+        }
+    // Changes only when recording starts, pauses or stops, not with each level sample.
+    val controls by remember(voiceState) {
+        derivedStateOf { (voiceState() as? VoiceState.Recording)?.let { BarControls(it.canPause, it.paused) } }
+    }
+    Row(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer { alpha = opacity }
             .clip(CircleShape)
             .background(BubbleColors.Fill)
-            .border(Dimens.Hairline, BubbleColors.Edge, CircleShape)
-            .windowDrag(onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap, onLongPress = onOpen)
-            .semantics {
-                role = Role.Button
-                contentDescription = label
-                onClick(label) { onTap(); true }
-                onLongClick(openLabel) { onOpen(); true }
-            },
-        contentAlignment = Alignment.Center,
+            .border(Dimens.Hairline, BubbleColors.Edge, CircleShape),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        BubbleWave(voiceState)
+        val bar = controls
+        if (bar != null) {
+            RecordingBar(bar, drag, onCancel, onPauseToggle, onDone = onRecord) { BubbleWave(voiceState) }
+        } else {
+            Box(drag.fillMaxSize(), contentAlignment = Alignment.Center) { BubbleWave(voiceState) }
+        }
     }
+}
+
+/** Which buttons the recording bar shows. */
+private data class BarControls(val canPause: Boolean, val paused: Boolean)
+
+/**
+ * The bar shown while recording, by both the bubble and the record pill: ✕ throws the recording
+ * away, ❚❚ / ▶ pauses and resumes (Whisper clips only), and ✓ stops and adds it to the note. The
+ * buttons sit beside [drag] (the waveform), not inside it, so their taps never start a drag.
+ */
+@Composable
+private fun RowScope.RecordingBar(
+    controls: BarControls,
+    drag: Modifier,
+    onCancel: () -> Unit,
+    onPauseToggle: () -> Unit,
+    onDone: () -> Unit,
+    wave: @Composable () -> Unit,
+) {
+    RecordPillButton("✕", stringResource(R.string.voice_discard), onCancel)
+    if (controls.canPause) {
+        RecordPillButton(
+            if (controls.paused) "▶" else "❚❚",
+            stringResource(if (controls.paused) R.string.voice_resume else R.string.voice_pause),
+            onPauseToggle,
+        )
+    }
+    Box(drag.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) { wave() }
+    RecordPillButton("✓", stringResource(R.string.voice_done), onDone)
 }
 
 private enum class BubbleTap { Record, Stop, Open }
@@ -168,7 +211,7 @@ private fun pulsingLevels(): List<Float> {
  * The floating window shrunk below the note's minimum size: just a record button, in the dark
  * pill style of the bubble (Wispr Flow's bar). Tap records into the open note; drag moves it;
  * long-press goes back to the full panel. While recording it shows ✕ (throw the recording away),
- * the waveform and ✓ (stop and add it to the note); the window widens to fit them.
+ * pause, the waveform and ✓ (stop and add it to the note); the window widens to fit them.
  */
 @Composable
 fun OverlayRecordPill(
@@ -176,6 +219,7 @@ fun OverlayRecordPill(
     opacity: Float,
     onRecord: () -> Unit,
     onCancel: () -> Unit,
+    onPauseToggle: () -> Unit,
     onRestore: () -> Unit,
     onDragStart: () -> Unit,
     onDrag: (Int, Int) -> Unit,
@@ -214,12 +258,9 @@ fun OverlayRecordPill(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (state is VoiceState.Recording) {
-            // ✕ and ✓ sit beside the drag area, not inside it, so their taps never start a drag.
-            RecordPillButton("✕", stringResource(R.string.voice_discard), onCancel)
-            Box(drag.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+            RecordingBar(BarControls(state.canPause, state.paused), drag, onCancel, onPauseToggle, onDone = onRecord) {
                 Waveform(pillLevels(state), BubbleColors.Content, Dimens.BubbleWaveMaxHeight, bars = BubbleBars)
             }
-            RecordPillButton("✓", stringResource(R.string.voice_done), onRecord)
         } else {
             Box(drag.fillMaxSize(), contentAlignment = Alignment.Center) {
                 when (state) {

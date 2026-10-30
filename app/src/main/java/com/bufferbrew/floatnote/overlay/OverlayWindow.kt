@@ -32,6 +32,7 @@ import com.bufferbrew.floatnote.ui.theme.FloatNoteTheme
 import com.bufferbrew.floatnote.voice.AppVoiceActions
 import com.bufferbrew.floatnote.voice.AutoRecordEffect
 import com.bufferbrew.floatnote.voice.VoiceController
+import com.bufferbrew.floatnote.voice.VoiceState
 
 enum class OverlayMode { Panel, Bubble }
 
@@ -165,7 +166,7 @@ class OverlayWindow(
         AutoRecordEffect(session.note?.id)
         // Derived, so this only reruns when recording starts or stops, not on every level sample.
         val recording by remember { derivedStateOf { voice.isRecording } }
-        // The pill widens to fit ✕ and ✓ while recording, then goes back to its own size.
+        // The pill and the bubble widen to fit ✕, pause and ✓ while recording, then go back to their own size.
         LaunchedEffect(recording) { update() }
         // The pill and the bubble record into the open note, so make sure there is one.
         LaunchedEffect(compact, mode) { if (compact || mode == OverlayMode.Bubble) session.ensureOpen() }
@@ -176,6 +177,8 @@ class OverlayWindow(
                     voiceState = { voice.state },
                     opacity = opacity,
                     onRecord = voiceActions::onMicToggle,
+                    onCancel = voiceActions::onCancel,
+                    onPauseToggle = voiceActions::onPauseToggle,
                     onOpen = ::expand,
                     onDragStart = { dragOrigin = bubble },
                     onDrag = { dx, dy -> moveBubble(dx, dy) },
@@ -188,6 +191,7 @@ class OverlayWindow(
                             opacity = opacity,
                             onRecord = voiceActions::onMicToggle,
                             onCancel = voiceActions::onCancel,
+                            onPauseToggle = voiceActions::onPauseToggle,
                             onRestore = ::restoreFullSize,
                             onDragStart = { dragOrigin = panel },
                             onDrag = { dx, dy -> movePanel(dx, dy) },
@@ -296,10 +300,14 @@ class OverlayWindow(
     }
 
     private fun applyLayout() {
+        val recording = voice.state as? VoiceState.Recording
+        // Room for the pause button too when the clip can pause (Whisper, not the device engine).
+        val barWidth = dp(if (recording?.canPause == true) BAR_WITH_PAUSE_WIDTH_DP else PILL_RECORDING_WIDTH_DP)
         val rect = when {
+            mode == OverlayMode.Bubble && recording != null ->
+                bubble.grownTo(barWidth, dp(PILL_RECORDING_HEIGHT_DP), usableArea())
             mode == OverlayMode.Bubble -> bubble
-            compact && voice.isRecording ->
-                panel.grownTo(dp(PILL_RECORDING_WIDTH_DP), dp(PILL_RECORDING_HEIGHT_DP), usableArea())
+            compact && recording != null -> panel.grownTo(barWidth, dp(PILL_RECORDING_HEIGHT_DP), usableArea())
             else -> panel
         }
         params.x = rect.x
@@ -383,6 +391,8 @@ class OverlayWindow(
         /** Room for ✕, a waveform and ✓ while the pill is recording. */
         const val PILL_RECORDING_WIDTH_DP = 136
         const val PILL_RECORDING_HEIGHT_DP = 44
+        /** ✕, pause, a waveform and ✓. */
+        const val BAR_WITH_PAUSE_WIDTH_DP = 176
         const val BUBBLE_WIDTH_DP = 56
         const val BUBBLE_HEIGHT_DP = 30
     }
