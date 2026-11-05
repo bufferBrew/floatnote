@@ -3,6 +3,9 @@ package com.bufferbrew.floatnote.ui.list
 import android.text.format.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
@@ -11,10 +14,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,6 +38,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.ai.labelRes
 import com.bufferbrew.floatnote.domain.model.NoteCategory
@@ -80,7 +85,7 @@ fun NoteListContent(
         ) {
             Text(
                 stringResource(R.string.notes_title),
-                style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.weight(1f),
             )
             PillButton(stringResource(R.string.new_note), onCreate, selected = true, dense = compact)
@@ -88,7 +93,7 @@ fun NoteListContent(
         // The other pages, Wispr-style: History and Dictionary sit beside the notes, not in Settings.
         if (onHistory != null || onDictionary != null) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = Dimens.SpaceS),
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = Dimens.SpaceS),
                 horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
             ) {
                 onHistory?.let { PillButton(stringResource(R.string.history_title), it, dense = compact) }
@@ -116,21 +121,35 @@ fun NoteListContent(
                         else -> stringResource(R.string.no_notes)
                     },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(Dimens.SpaceM),
                 )
             }
         } else {
-            LazyColumn(Modifier.weight(1f)) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(vertical = Dimens.SpaceXs),
+                verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
+            ) {
                 items(notes, key = { it.id }) { summary ->
                     Column(
                         modifier = Modifier
+                            .animateItem()
                             .fillMaxWidth()
+                            .clip(RoundedCornerShape(if (compact) Dimens.CornerM else Dimens.CornerL))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .border(
+                                Dimens.Hairline,
+                                MaterialTheme.colorScheme.outlineVariant,
+                                RoundedCornerShape(if (compact) Dimens.CornerM else Dimens.CornerL),
+                            )
                             .combinedClickable(
                                 onClick = { onOpen(summary.id) },
                                 onLongClick = { actionsFor = if (actionsFor == summary.id) null else summary.id },
                                 onLongClickLabel = actionsLabel,
                             )
-                            .padding(vertical = Dimens.SpaceS)
-                            .animateItem(),
+                            .padding(if (compact) Dimens.SpaceS else Dimens.SpaceM),
                         verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -139,39 +158,34 @@ fun NoteListContent(
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
+                                modifier = Modifier.weight(1f),
                             )
-                            // "Work · Pinned"; the category is left out when the list already shows only it.
-                            val tags = listOfNotNull(
-                                summary.category?.takeIf { it != categoryFilter }?.let { stringResource(it.labelRes) },
-                                stringResource(R.string.pinned).takeIf { summary.pinned },
-                            )
-                            if (tags.isNotEmpty()) {
-                                Text(
-                                    "  " + tags.joinToString(" · "),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                )
-                            }
                         }
                         if (summary.preview.isNotBlank()) {
                             Text(
                                 summary.preview,
                                 style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        Text(
+                        val metadata = listOfNotNull(
+                            stringResource(R.string.pinned).takeIf { summary.pinned },
+                            summary.category?.takeIf { it != categoryFilter }?.let { stringResource(it.labelRes) },
                             DateUtils.getRelativeTimeSpanString(summary.updatedAt).toString(),
+                        )
+                        Text(
+                            metadata.joinToString(" · "),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                     if (actionsFor == summary.id) {
                         Row(
-                            modifier = Modifier.padding(bottom = Dimens.SpaceS),
+                            modifier = Modifier.horizontalScroll(rememberScrollState()).padding(vertical = Dimens.SpaceS),
                             horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
                         ) {
                             if (onPin != null) {
@@ -195,7 +209,6 @@ fun NoteListContent(
                             PillButton(stringResource(R.string.cancel), { actionsFor = null }, dense = true)
                         }
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                 }
             }
         }
@@ -242,6 +255,7 @@ private fun SearchField(query: String, onChange: (String) -> Unit, compact: Bool
             .padding(bottom = Dimens.SpaceS)
             .clip(RoundedCornerShape(Dimens.CornerM))
             .background(colors.surfaceVariant)
+            .heightIn(min = Dimens.TouchTarget)
             .padding(horizontal = Dimens.SpaceM, vertical = if (compact) Dimens.SpaceXs + Dimens.SpaceXs else Dimens.SpaceS + Dimens.SpaceXs),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -353,7 +353,7 @@ fun OverlayPanel(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer { alpha = opacity }
-                .border(Dimens.Hairline, MaterialTheme.colorScheme.outline, shape),
+                .border(Dimens.Hairline, MaterialTheme.colorScheme.outlineVariant, shape),
             shape = shape,
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = Dimens.ElevationPanel,

@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -113,7 +114,7 @@ fun NoteEditorContent(
                     value = note.title,
                     onValueChange = actions::onTitleChange,
                     hint = stringResource(R.string.title_hint),
-                    style = if (compact) typography.titleMedium else typography.titleLarge,
+                    style = if (compact) typography.titleMedium else typography.headlineSmall,
                     modifier = Modifier.padding(vertical = if (compact) Dimens.SpaceXs else Dimens.SpaceS),
                 )
             }
@@ -145,6 +146,10 @@ fun NoteEditorContent(
         }
         AssistStatus(assist, actions, voiceActions::onOpenSettings, Modifier.padding(top = Dimens.SpaceS))
         VoiceStatus(voiceState, voiceActions, Modifier.padding(top = Dimens.SpaceS))
+        HorizontalDivider(
+            modifier = Modifier.padding(top = Dimens.SpaceS),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
         EditorToolbar(
             taskMode = note.taskMode,
             actions = actions,
@@ -241,6 +246,7 @@ private fun BlockRow(
             style = style,
             modifier = Modifier
                 .weight(1f)
+                .padding(vertical = Dimens.SpaceS)
                 .focusRequester(focusRequester)
                 // Backspace on an empty line removes it and moves up, as in Keep. Keyboards send a
                 // Backspace key event when there's nothing left to delete.

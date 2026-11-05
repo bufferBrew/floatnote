@@ -1,7 +1,9 @@
 package com.bufferbrew.floatnote.ui.settings
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -109,7 +112,7 @@ fun SettingsContent(
 @Composable
 private fun SettingsMenu(onOpen: (SettingsPage) -> Unit) {
     Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineSmall)
-    Column {
+    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
         SettingsPage.entries.forEach { target ->
             val (title, help) = when (target) {
                 SettingsPage.Voice -> R.string.settings_page_voice to R.string.settings_page_voice_help
@@ -121,8 +124,10 @@ private fun SettingsMenu(onOpen: (SettingsPage) -> Unit) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(Dimens.CornerL))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .clickable { onOpen(target) }
-                    .padding(vertical = Dimens.SpaceM),
+                    .padding(Dimens.SpaceM),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs)) {
@@ -135,7 +140,6 @@ private fun SettingsMenu(onOpen: (SettingsPage) -> Unit) {
                 }
                 Text("›", style = MaterialTheme.typography.titleMedium, modifier = Modifier.clearAndSetSemantics {})
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         }
     }
 }
@@ -511,7 +515,7 @@ private fun BackupPage(
     if (message != null) {
         Text(message, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     Text(stringResource(R.string.markdown_title), style = MaterialTheme.typography.titleMedium)
     Text(
         stringResource(R.string.markdown_help),

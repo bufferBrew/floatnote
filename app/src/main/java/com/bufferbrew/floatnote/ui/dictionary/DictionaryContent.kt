@@ -94,7 +94,7 @@ fun DictionaryContent(
                         )
                         TextButton(onClick = { onDelete(entry.id) }) { Text(stringResource(R.string.delete)) }
                     }
-                    HorizontalDivider(color = colors.outline)
+                    HorizontalDivider(color = colors.outlineVariant)
                 }
             }
         }

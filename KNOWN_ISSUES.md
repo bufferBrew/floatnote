@@ -218,3 +218,9 @@
 - Ceiling (when this breaks): each 5 MB part is cleaned up by AI on its own, so a sentence cut at a part boundary may read oddly. The fallback is decided when recording starts; losing the network mid-recording still ends in a Retry. "Transcribe again" adds a second copy of the text to the note rather than replacing the first. The Markdown export only writes (edits made to the files aren't read back), keeps the file name when a provider can't rename, and is tied to the folder the user picked; picking a new one leaves the old files behind. Export writes are untested on real providers (Drive, Obsidian vault on local storage).
 - Upgrade trigger (what to do when it's hit): clean up a long clip's parts together; switch engines mid-recording on network loss; offer "Replace" for Transcribe again; read edited `.md` files back when two-way sync is wanted.
 - Status: open (not yet tried on a device)
+
+## 2026-11-03 — UI polish needs visual verification on Android
+- What changed: rounded note and settings cards, separate note metadata, neutral Material color roles, larger full-app button targets, and editor spacing shared with the floating panel.
+- Limit: no Android device or emulator was connected during this pass. Compact controls retain their existing smaller dimensions to fit the floating panel.
+- Verification needed: light/dark themes, 200% font scale, keyboard/TalkBack navigation, and narrow floating windows including search and note actions.
+- Status: open (device visual/accessibility check pending)

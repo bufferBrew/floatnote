@@ -154,7 +154,7 @@ fun HistoryContent(
                         }
                     }
                 }
-                HorizontalDivider(color = colors.outline)
+                HorizontalDivider(color = colors.outlineVariant)
             }
         }
     }
