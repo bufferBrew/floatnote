@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">FloatNote</string>
+    <string name="app_name">Perch</string>
     <string name="title_hint">Title</string>
     <string name="empty_note_hint">Tap here or pick a block type below to start writing</string>
     <string name="block_hint">Write something</string>
@@ -27,7 +27,7 @@
     <string name="opacity_value">Opacity %1$d%%</string>
     <string name="minimise">Minimise</string>
     <string name="close_floating">Close floating note</string>
-    <string name="float_launcher_label">Float note</string>
+    <string name="float_launcher_label">Perch</string>
     <string name="float_button">Float</string>
     <string name="overlay_channel">Floating note</string>
     <string name="overlay_notification_title">Floating note is open</string>
@@ -72,7 +72,7 @@
     <string name="voice_retry">Retry</string>
     <string name="voice_dismiss">Dismiss</string>
     <string name="voice_waveform">Recording level</string>
-    <string name="mic_permission_needed">FloatNote needs the microphone to record voice notes</string>
+    <string name="mic_permission_needed">Perch needs the microphone to record voice notes</string>
     <string name="settings">Settings</string>
     <string name="settings_auto_record">Start recording when a note opens</string>
     <string name="settings_engine">Speech to text</string>
@@ -95,7 +95,7 @@
     <string name="settings_mic">Microphone access</string>
     <string name="settings_mic_granted">Allowed</string>
     <string name="settings_mic_allow">Allow microphone</string>
-    <string name="overlay_permission_needed">Allow FloatNote to display over other apps, then try again</string>
+    <string name="overlay_permission_needed">Allow Perch to display over other apps, then try again</string>
     <string name="ai_organise">✦ Organise</string>
     <string name="ai_organising">Organising…</string>
     <string name="ai_organised">Organised with AI</string>
@@ -130,7 +130,7 @@
     <string name="settings_float_new_note">Float note opens a new note</string>
     <string name="settings_float_new_note_help">For the Edge panel, Quick Settings tile and “Float note” icon. Off: reopens your last note.</string>
     <string name="share_note">Share</string>
-    <string name="share_target">FloatNote</string>
+    <string name="share_target">Perch</string>
     <string name="tile_label">Float note</string>
     <string name="shortcut_float">Floating note</string>
     <string name="shortcut_float_new">New floating note</string>
@@ -139,7 +139,7 @@
     <string name="checkbox_label">%1$s, %2$s</string>
     <string name="checklist_item">Checklist item</string>
     <string name="task_item">Task</string>
-    <string name="vocab_empty">Add names and words FloatNote keeps getting wrong</string>
+    <string name="vocab_empty">Add names and words Perch keeps getting wrong</string>
     <string name="settings_page_voice">Voice</string>
     <string name="settings_page_voice_help">Speech engine, language, microphone, auto-record</string>
     <string name="settings_page_api">API key and server</string>
@@ -243,7 +243,7 @@
     <string name="err_organise_edited">The note changed while organising, so nothing was replaced. Try again.</string>
     <string name="err_speech_silent">The phone\'s speech service stopped responding. Try again, or switch to Whisper in Settings.</string>
     <string name="err_speech_language">Speech recognition doesn\'t support this language. Try clearing Language in Settings.</string>
-    <string name="err_speech_permission">FloatNote needs microphone access.</string>
+    <string name="err_speech_permission">Perch needs microphone access.</string>
     <string name="err_speech_busy">The speech recognizer is busy in another app.</string>
     <string name="err_speech_network">Speech recognition needs a connection on this phone for this language.</string>
     <string name="err_speech_disconnects">The phone\'s speech service keeps disconnecting. Try again, or switch to Whisper in Settings.</string>
