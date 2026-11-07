@@ -86,14 +86,16 @@ private const val BubbleBars = 5
  * waveform. While recording the bars follow your voice; while transcribing they pulse.
  * Drag it anywhere. Tap starts listening; while recording it widens into the record pill's bar:
  * ✕ (throw it away), pause, the waveform (tap it, or ✓, to stop and add it to the note). Long-press
- * opens the panel. While transcribing, or after an error, a tap opens the panel instead, where
- * Cancel, Retry and Settings are.
+ * opens the panel; a tap never does. A tap while transcribing does nothing, and a tap after a
+ * failed upload retries it (the kept clip is not thrown away). Other errors show "!" and a tap
+ * records again (the device recognizer is used if Whisper isn't set up).
  */
 @Composable
 fun OverlayBubble(
     voiceState: () -> VoiceState,
     opacity: Float,
     onRecord: () -> Unit,
+    onRetry: () -> Unit,
     onCancel: () -> Unit,
     onPauseToggle: () -> Unit,
     onOpen: () -> Unit,
@@ -101,22 +103,30 @@ fun OverlayBubble(
     onDrag: (Int, Int) -> Unit,
     onDragEnd: () -> Unit,
 ) {
-    // Only whether it's recording or idle matters here; the bars read the level in BubbleWave.
+    // Only the tap's meaning changes with the state; the bars read the level in BubbleWave.
     val kind by remember(voiceState) {
         derivedStateOf {
-            when (voiceState()) {
+            when (val state = voiceState()) {
                 VoiceState.Idle -> BubbleTap.Record
                 is VoiceState.Recording -> BubbleTap.Stop
-                else -> BubbleTap.Open
+                VoiceState.Transcribing -> BubbleTap.Busy
+                // A kept clip waiting for upload: retry it, since a new recording would discard it.
+                is VoiceState.Error -> if (state.canRetry) BubbleTap.Retry else BubbleTap.Record
             }
         }
     }
-    val onTap = if (kind == BubbleTap.Open) onOpen else onRecord
+    // A tap never opens the note; only a long press does.
+    val onTap: () -> Unit = when (kind) {
+        BubbleTap.Record, BubbleTap.Stop -> onRecord
+        BubbleTap.Retry -> onRetry
+        BubbleTap.Busy -> ({})
+    }
     val label = stringResource(
         when (kind) {
             BubbleTap.Record -> R.string.pill_record
             BubbleTap.Stop -> R.string.bubble_stop
-            BubbleTap.Open -> R.string.open_floating_note
+            BubbleTap.Retry -> R.string.voice_retry
+            BubbleTap.Busy -> R.string.voice_transcribing
         }
     )
     val openLabel = stringResource(R.string.open_floating_note)
@@ -145,7 +155,14 @@ fun OverlayBubble(
         if (bar != null) {
             RecordingBar(bar, drag, onCancel, onPauseToggle, onDone = onRecord) { BubbleWave(voiceState) }
         } else {
-            Box(drag.fillMaxSize(), contentAlignment = Alignment.Center) { BubbleWave(voiceState) }
+            Box(drag.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (voiceState() is VoiceState.Error) {
+                    // Same mark as the record pill, so a failure is visible without opening the note.
+                    Text("!", style = MaterialTheme.typography.titleMedium, color = BubbleColors.Content, modifier = Modifier.clearAndSetSemantics {})
+                } else {
+                    BubbleWave(voiceState)
+                }
+            }
         }
     }
 }
@@ -179,7 +196,7 @@ private fun RowScope.RecordingBar(
     RecordPillButton("✓", stringResource(R.string.voice_done), onDone)
 }
 
-private enum class BubbleTap { Record, Stop, Open }
+private enum class BubbleTap { Record, Stop, Retry, Busy }
 
 /** Its own scope, so only the bars redraw as the voice level changes. */
 @Composable

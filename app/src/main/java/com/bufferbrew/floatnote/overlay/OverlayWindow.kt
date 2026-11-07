@@ -181,6 +181,7 @@ class OverlayWindow(
                     voiceState = { voice.state },
                     opacity = opacity,
                     onRecord = voiceActions::onMicToggle,
+                    onRetry = voiceActions::onRetry,
                     onCancel = voiceActions::onCancel,
                     onPauseToggle = voiceActions::onPauseToggle,
                     onOpen = ::expand,
