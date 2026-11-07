@@ -1,4 +1,4 @@
-# FloatNote — Project Memory
+# Perch — Project Memory
 
 Android note-taking app built to be used *on top of* other apps. A floating, adjustable-opacity
 note window, a minimised draggable bubble, and voice capture that starts by default.
@@ -47,7 +47,7 @@ Solo developer, main-branch workflow.
 | Lint        | `./gradlew lint`           |
 | Release APK | `./gradlew assembleRelease` (unsigned without the signing properties) |
 | CI          | `.github/workflows/ci.yml`: unit tests, lint, release build |
-| APK to Drive | Automatic: `.githooks/post-commit` builds the debug APK after each commit and copies it to `My Drive/apk/FloatNote-debug.apk` (log: `build/apk-to-drive.log`). Enable on a new clone with `git config core.hooksPath .githooks` |
+| APK to Drive | Automatic: `.githooks/post-commit` builds the debug APK after each commit and copies it to `My Drive/apk/Perch-debug.apk` (log: `build/apk-to-drive.log`). Enable on a new clone with `git config core.hooksPath .githooks` |
 
 Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change done.
 
@@ -83,7 +83,7 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   - `WindowGeometry.kt`: pure clamp/resize maths, unit-tested, plus `PanelSize` presets
     (S/M/L; default Small). The panel's ◐ button shows size chips and the opacity slider.
 - `FloatLaunchActivity`: the "Float note" launcher entry for the Edge panel, the QS tile, the
-  shortcuts and "Share to FloatNote" (shared text becomes a new note). No UI. Also asks
+  shortcuts and "Share to Perch" (shared text becomes a new note). No UI. Also asks
   for the mic on the overlay's behalf (`requestMicIntent`), since a Service can't.
 - `voice/`: voice notes.
   - `VoiceController`: record → transcribe → `session.addTranscript(noteId, text)`. One per
@@ -156,8 +156,9 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   keyboard (incl. Wispr Flow) works, and restore it when minimised so touches pass through.
   Opacity is a graphics layer on the content (see the gotcha below), never `LayoutParams.alpha`.
 - Use theme tokens. No hardcoded colors or dp literals for corners and elevation.
-- Visual style follows Wispr Flow: monochrome ink on warm off-white (near-black in dark mode),
-  serif titles, pill chips (`ui/components/Buttons.kt`), large rounded cards, no accent colour.
+- Visual style: palette taken from the app icon (deep indigo tile, violet accent, lavender-white
+  paper), set in `ui/theme/Theme.kt`. Serif titles, pill chips (`ui/components/Buttons.kt`) with a
+  keyboard focus ring, large rounded cards.
   The bubble is a small dark pill with a waveform and stays dark in both themes (`BubbleColors`).
 
 ## Platform gotchas (check before touching overlay/voice/launch code)

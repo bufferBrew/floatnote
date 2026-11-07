@@ -24,9 +24,9 @@ mkdir "$LOCK" 2>/dev/null || exit 0
     built="$(git rev-parse HEAD)"
     echo "$(date '+%F %T') building $(git rev-parse --short HEAD)"
     if ./gradlew assembleDebug -q; then
-      cp app/build/outputs/apk/debug/app-debug.apk "$DEST_DIR/FloatNote-debug.apk.tmp" &&
-        mv -f "$DEST_DIR/FloatNote-debug.apk.tmp" "$DEST_DIR/FloatNote-debug.apk" &&
-        echo "$(date '+%F %T') copied to $DEST_DIR/FloatNote-debug.apk"
+      cp app/build/outputs/apk/debug/app-debug.apk "$DEST_DIR/Perch-debug.apk.tmp" &&
+        mv -f "$DEST_DIR/Perch-debug.apk.tmp" "$DEST_DIR/Perch-debug.apk" &&
+        echo "$(date '+%F %T') copied to $DEST_DIR/Perch-debug.apk"
     else
       echo "$(date '+%F %T') build failed; Drive copy left as it was"
       break

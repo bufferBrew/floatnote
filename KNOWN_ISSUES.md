@@ -127,7 +127,7 @@
 - What changed / what shortcut was taken:
   - Launching: Quick Settings tile, app shortcuts ("Floating note", "New floating note"), and a
     "Float note opens a new note" setting.
-  - Sharing: "Share to FloatNote" makes a new floating note; ✦ Share sends a note out.
+  - Sharing: "Share to Perch" makes a new floating note; ✦ Share sends a note out.
   - Overlay Back on Android 13+ uses `OnBackInvokedCallback`.
   - Recording stops after 45 s of silence. A Whisper clip with no speech at all is dropped,
     not uploaded.
@@ -178,7 +178,7 @@
 - Status: open (needs a device check)
 
 ## 2026-10-24 — Auto-record only trusts launches the user made
-- What changed / what shortcut was taken: `FloatLaunchActivity` is exported (launcher, Edge panel, share target), so any app could open it and, with auto-record on, switch the mic on. Now auto-record skips the note opened at launch unless `getReferrer()` (with no `EXTRA_REFERRER*` extras) is FloatNote, a system app or the default home app. Shared text never auto-records. Tapping Record always works.
+- What changed / what shortcut was taken: `FloatLaunchActivity` is exported (launcher, Edge panel, share target), so any app could open it and, with auto-record on, switch the mic on. Now auto-record skips the note opened at launch unless `getReferrer()` (with no `EXTRA_REFERRER*` extras) is Perch, a system app or the default home app. Shared text never auto-records. Tapping Record always works.
 - Ceiling (when this breaks): a third-party launcher or edge app that isn't the default home and isn't preinstalled opens the note without auto-recording. Preinstalled apps are trusted as a group.
 - Upgrade trigger (what to do when it's hit): if users of other launchers ask, add a "trusted launchers" list in Settings, or check `getLaunchedFromPackage()` on Android 14+.
 - Status: open
@@ -208,7 +208,7 @@
 - Status: open (not yet tried on a device)
 
 ## 2026-10-28 — Pause for calls and alarms; notification controls; shared audio
-- What changed / what shortcut was taken: a Whisper clip holds transient audio focus ("may duck", so music gets quieter rather than stopping) and pauses when a call rings or an alarm goes off (`AUDIOFOCUS_LOSS_TRANSIENT`), then resumes in the same clip when focus comes back. Pause / Resume are also in the status strip and the floating note's notification, which shows the recording time and Stop and add. Audio shared to FloatNote (up to 20 files, 100 MB each) is copied to the cache and transcribed one by one into a new note titled after the first file. The device engine doesn't pause: its sentences are already in the note.
+- What changed / what shortcut was taken: a Whisper clip holds transient audio focus ("may duck", so music gets quieter rather than stopping) and pauses when a call rings or an alarm goes off (`AUDIOFOCUS_LOSS_TRANSIENT`), then resumes in the same clip when focus comes back. Pause / Resume are also in the status strip and the floating note's notification, which shows the recording time and Stop and add. Audio shared to Perch (up to 20 files, 100 MB each) is copied to the cache and transcribed one by one into a new note titled after the first file. The device engine doesn't pause: its sentences are already in the note.
 - Ceiling (when this breaks): once another app takes focus for good (a video starts playing), later calls no longer pause the clip. A paused clip still holds the mic and is stopped and sent after 10 minutes. The notification only exists while the floating note is open, so recording in the full app has no notification controls. Shared files go to the Whisper server even when the Device engine is selected, so they need the key; a file over the server's limit (25 MB on OpenAI) fails with "too long", and nothing splits it. A share that arrives while the copy activity is re-created (rotation mid-copy) is dropped.
 - Upgrade trigger (what to do when it's hit): watch `AudioManager` mode changes (API 31+) for calls as well as focus; a recording notification from the full app; split long shared files into pieces before upload.
 - Status: open (not yet tried on a device)

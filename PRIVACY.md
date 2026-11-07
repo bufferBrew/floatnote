@@ -1,8 +1,8 @@
-# FloatNote privacy policy
+# Perch privacy policy
 
 _Last updated: 24 October 2026_
 
-FloatNote is a note-taking app. It has no accounts, no ads, no analytics and no servers of its own.
+Perch is a note-taking app. It has no accounts, no ads, no analytics and no servers of its own.
 
 ## What stays on your phone
 
@@ -12,7 +12,7 @@ FloatNote is a note-taking app. It has no accounts, no ads, no analytics and no 
 
 ## What leaves your phone, and only when you turn it on
 
-FloatNote sends data only to the speech or AI service *you* configure in Settings → API key and server. OpenAI is the default, and any OpenAI-compatible service works (e.g. Groq). Your agreement with that provider governs what it does with the data.
+Perch sends data only to the speech or AI service *you* configure in Settings → API key and server. OpenAI is the default, and any OpenAI-compatible service works (e.g. Groq). Your agreement with that provider governs what it does with the data.
 
 | Feature | Sent | When |
 |---|---|---|
@@ -20,7 +20,7 @@ FloatNote sends data only to the speech or AI service *you* configure in Setting
 | Clean up dictation (AI) | The text of each dictation | Only if you turn it on |
 | ✦ Organise (AI) | The text of the note | Only when you tap Organise |
 
-With the **This phone** speech engine, recognition is done by your phone's own speech service (e.g. Google's), under that service's terms. FloatNote doesn't send the audio anywhere itself.
+With the **This phone** speech engine, recognition is done by your phone's own speech service (e.g. Google's), under that service's terms. Perch doesn't send the audio anywhere itself.
 
 Your API key is sent only to the server address you set, only over https, and never to a different host without your confirmation.
 

@@ -1,4 +1,4 @@
-# FloatNote: improvement backlog (2026-10-24)
+# Perch: improvement backlog (2026-10-24)
 
 From a read-only review of the whole app. Paths are relative to `app/src/main/java/com/bufferbrew/floatnote/`.
 
@@ -13,7 +13,7 @@ From a read-only review of the whole app. Paths are relative to `app/src/main/ja
 | 4 | Stop recording after 30–60 s of silence | Battery, cost, privacy | P1 | M | **Done 2026-10-24** (45 s silence stop; silent clips dropped). Auto-record plus the 10-minute cap means long, billed, silent uploads |
 | 5 | Keep the encrypted key out of backup, or make `hasApiKey` mean "can decrypt" | Security | P1 | S | **Done 2026-10-24** (key in its own file, excluded from backup; "saved" means decryptable). The Keystore key doesn't restore with the backup, so Settings shows "saved" but recording fails |
 | 6 | Only allow `https` addresses, and confirm before sending the key to a new host | Security | P1 | S | **Done 2026-10-24** (https only + confirm new host). `voice/VoiceSettings.kt` accepts any address |
-| 7 | "Share to FloatNote" (ACTION_SEND), plus share or copy a note | Product | P1 | M | **Done 2026-10-24** (share in and out). No SEND intent filter |
+| 7 | "Share to Perch" (ACTION_SEND), plus share or copy a note | Product | P1 | M | **Done 2026-10-24** (share in and out). No SEND intent filter |
 | 8 | Let the Float launcher open a new note | Product | P1 | S | **Done 2026-10-24** (setting + "New floating note" shortcut). `ensureOpen()` always reopens the last-edited note |
 | 9 | Undo after deleting a note, or a trash | Data safety | P1 | S | **Done 2026-10-24** (delete with 8 s Undo (no dialog)). Deletes immediately after one confirm |
 | 10 | Scroll to new dictation and new blocks in the editor | UX | P1 | S | **Done 2026-10-24** (scroll to new lines, follow dictation). The editor's LazyColumn never scrolls to added items |
