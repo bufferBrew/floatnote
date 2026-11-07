@@ -181,6 +181,12 @@
     <string name="check_unknown">Not checked</string>
     <string name="settings_page_ai_help">Dictation clean-up, ✦ Organise and what it knows per category</string>
     <string name="settings_page_floating">Floating note</string>
+    <string name="settings_page_appearance">Appearance</string>
+    <string name="settings_page_appearance_help">Colour theme for the whole app</string>
+    <string name="settings_appearance_help">Pick a colour theme. Your phone\'s light or dark setting still decides which version is used.</string>
+    <string name="palette_indigo">Indigo (icon)</string>
+    <string name="palette_classic">Classic cream</string>
+    <string name="palette_mono">Black and white</string>
     <string name="settings_page_floating_help">What the Edge panel, tile and Float note icon open</string>
     <string name="back_to_settings">‹ Settings</string>
     <string name="edit_undo">↶ Undo</string>

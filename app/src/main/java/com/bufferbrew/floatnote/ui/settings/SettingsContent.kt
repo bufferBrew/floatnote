@@ -45,13 +45,14 @@ import com.bufferbrew.floatnote.net.CheckLine
 import com.bufferbrew.floatnote.net.ConnectionCheck
 import com.bufferbrew.floatnote.ui.components.AppSwitch
 import com.bufferbrew.floatnote.ui.components.PillButton
+import com.bufferbrew.floatnote.ui.theme.AppPalette
 import com.bufferbrew.floatnote.ui.theme.Dimens
 import com.bufferbrew.floatnote.voice.VoiceEngine
 import com.bufferbrew.floatnote.voice.VoiceSettings
 import kotlinx.coroutines.launch
 
 /** The Settings pages. Dictionary and History are pages of their own beside the notes. */
-enum class SettingsPage { Voice, Api, Ai, Floating, Backup }
+enum class SettingsPage { Voice, Api, Ai, Floating, Appearance, Backup }
 
 /**
  * Settings: a short menu of categories, each opening its own page. Text fields save as you
@@ -71,6 +72,9 @@ fun SettingsContent(
     onRequestMic: () -> Unit,
     openNewNote: Boolean,
     onOpenNewNoteChange: (Boolean) -> Unit,
+    /** The colour theme, and the setter that saves and applies a new one at once. */
+    palette: AppPalette,
+    onPaletteChange: (AppPalette) -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit,
     /** Result of the last export or import, shown on the Backup page. */
@@ -104,6 +108,7 @@ fun SettingsContent(
             SettingsPage.Api -> ApiPage(settings, connectionCheck)
             SettingsPage.Ai -> AiPage(settings, categories, connectionCheck)
             SettingsPage.Floating -> FloatingPage(openNewNote, onOpenNewNoteChange)
+            SettingsPage.Appearance -> AppearancePage(palette, onPaletteChange)
             SettingsPage.Backup -> BackupPage(onExport, onImport, backupMessage, markdownFolder, onChooseMarkdownFolder, onStopMarkdown)
         }
     }
@@ -119,6 +124,7 @@ private fun SettingsMenu(onOpen: (SettingsPage) -> Unit) {
                 SettingsPage.Api -> R.string.settings_page_api to R.string.settings_page_api_help
                 SettingsPage.Ai -> R.string.settings_ai to R.string.settings_page_ai_help
                 SettingsPage.Floating -> R.string.settings_page_floating to R.string.settings_page_floating_help
+                SettingsPage.Appearance -> R.string.settings_page_appearance to R.string.settings_page_appearance_help
                 SettingsPage.Backup -> R.string.settings_page_backup to R.string.settings_page_backup_help
             }
             Row(
@@ -490,6 +496,32 @@ private fun FloatingPage(openNewNote: Boolean, onOpenNewNoteChange: (Boolean) ->
             )
         }
         AppSwitch(checked = openNewNote, onCheckedChange = onOpenNewNoteChange)
+    }
+}
+
+@Composable
+private fun AppearancePage(palette: AppPalette, onPaletteChange: (AppPalette) -> Unit) {
+    Text(stringResource(R.string.settings_page_appearance), style = MaterialTheme.typography.headlineSmall)
+    Text(
+        stringResource(R.string.settings_appearance_help),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+        AppPalette.entries.forEach { option ->
+            PillButton(
+                text = stringResource(
+                    when (option) {
+                        AppPalette.Indigo -> R.string.palette_indigo
+                        AppPalette.Classic -> R.string.palette_classic
+                        AppPalette.Mono -> R.string.palette_mono
+                    },
+                ),
+                onClick = { onPaletteChange(option) },
+                selected = option == palette,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 

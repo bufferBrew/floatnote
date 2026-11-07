@@ -21,6 +21,8 @@ import com.bufferbrew.floatnote.net.ConnectionCheck
 import com.bufferbrew.floatnote.domain.model.Dictation
 import com.bufferbrew.floatnote.domain.model.VocabEntry
 import com.bufferbrew.floatnote.ui.editor.NoteViewModel
+import com.bufferbrew.floatnote.ui.theme.AppPalette
+import com.bufferbrew.floatnote.ui.theme.AppearancePrefs
 import com.bufferbrew.floatnote.util.strings
 import com.bufferbrew.floatnote.voice.AndroidLiveRecognizer
 import com.bufferbrew.floatnote.voice.AudioFocusInterruptions
@@ -32,6 +34,7 @@ import com.bufferbrew.floatnote.voice.WhisperClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -77,6 +80,17 @@ class FloatNoteApp : Application() {
 
     /** What ✦ Organise knows about each note category. */
     val categoryContext: CategoryContext by lazy { CategoryContext(this) }
+
+    private val appearancePrefs by lazy { AppearancePrefs(this) }
+    private val paletteFlow by lazy { MutableStateFlow(appearancePrefs.palette) }
+
+    /** The colour theme. The Activity and the overlay both follow it, so a change applies at once. */
+    val palette: StateFlow<AppPalette> get() = paletteFlow
+
+    fun setPalette(value: AppPalette) {
+        appearancePrefs.palette = value
+        paletteFlow.value = value
+    }
 
     /** AI clean-up and Organise, on the same OpenAI-compatible server and key as Whisper. */
     val assistant: NoteAssistant by lazy {

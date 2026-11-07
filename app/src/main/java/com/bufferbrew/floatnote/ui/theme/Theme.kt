@@ -1,93 +1,125 @@
 package com.bufferbrew.floatnote.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 
-// Palette taken from the app icon: a deep indigo tile, violet accents and lavender-white paper.
-// Every colour below is checked to be at least 4.5:1 against the text drawn on it.
-private val Violet = Color(0xFF6D28D9)        // light-theme accent, 6.9:1 on Paper
-private val VioletLight = Color(0xFFA78BFA)   // dark-theme accent, 7:1 on Tile
-private val VioletMist = Color(0xFFEDE7FF)
-private val VioletInk = Color(0xFF3B1C7A)
+/**
+ * The colour themes the user can pick in Settings → Appearance. Each has a light and a dark
+ * version; the system setting decides which one is used. [key] is what's saved, so never rename it.
+ */
+enum class AppPalette(val key: String) {
+    /** Deep indigo and violet, taken from the app icon. */
+    Indigo("indigo"),
+    /** The earlier warm off-white and ink look. */
+    Classic("classic"),
+    /** Plain black, white and grey. */
+    Mono("mono");
 
-private val Ink = Color(0xFF16122E)
-private val InkSoft = Color(0xFF5D5880)
-private val Paper = Color(0xFFF7F5FD)
-private val PaperDeep = Color(0xFFECE8FB)
-private val PaperHairline = Color(0xFFDCD6F2)
-private val White = Color(0xFFFFFFFF)
+    companion object {
+        fun fromKey(key: String?): AppPalette = entries.firstOrNull { it.key == key } ?: Indigo
+    }
+}
 
-private val Tile = Color(0xFF0D0C1D)
-private val TileRaised = Color(0xFF16142B)
-private val TileDeep = Color(0xFF221F3D)
-private val TileHairline = Color(0xFF302C52)
-private val Lavender = Color(0xFFF1EFFD)
-private val LavenderSoft = Color(0xFFA8A3C9)
-
-private val LightColors = lightColorScheme(
-    primary = Violet,
-    onPrimary = White,
-    primaryContainer = VioletMist,
-    onPrimaryContainer = VioletInk,
-    secondary = InkSoft,
-    onSecondary = Paper,
-    secondaryContainer = PaperDeep,
-    onSecondaryContainer = Ink,
-    tertiary = Violet,
-    onTertiary = White,
-    tertiaryContainer = VioletMist,
-    onTertiaryContainer = VioletInk,
-    surfaceTint = Violet,
-    surfaceContainerLowest = Paper,
-    surfaceContainerLow = Paper,
-    surfaceContainer = PaperDeep,
-    surfaceContainerHigh = PaperDeep,
-    surfaceContainerHighest = PaperHairline,
-    background = Paper,
-    onBackground = Ink,
-    surface = Paper,
-    onSurface = Ink,
-    surfaceVariant = PaperDeep,
-    onSurfaceVariant = InkSoft,
-    outline = InkSoft,
-    outlineVariant = PaperHairline,
+/** The handful of colours a palette is built from. Every role in the scheme maps to one of these. */
+private class Swatch(
+    val accent: Color,
+    val onAccent: Color,
+    val accentSoft: Color,
+    val onAccentSoft: Color,
+    val paper: Color,
+    val raised: Color,
+    val deep: Color,
+    val hairline: Color,
+    val ink: Color,
+    val inkSoft: Color,
 )
 
-private val DarkColors = darkColorScheme(
-    primary = VioletLight,
-    onPrimary = Tile,
-    primaryContainer = TileDeep,
-    onPrimaryContainer = Lavender,
-    secondary = LavenderSoft,
-    onSecondary = Tile,
-    secondaryContainer = TileDeep,
-    onSecondaryContainer = Lavender,
-    tertiary = VioletLight,
-    onTertiary = Tile,
-    tertiaryContainer = TileDeep,
-    onTertiaryContainer = Lavender,
-    surfaceTint = VioletLight,
-    surfaceContainerLowest = Tile,
-    surfaceContainerLow = TileRaised,
-    surfaceContainer = TileRaised,
-    surfaceContainerHigh = TileDeep,
-    surfaceContainerHighest = TileHairline,
-    background = Tile,
-    onBackground = Lavender,
-    surface = TileRaised,
-    onSurface = Lavender,
-    surfaceVariant = TileDeep,
-    onSurfaceVariant = LavenderSoft,
-    outline = LavenderSoft,
-    outlineVariant = TileHairline,
+// Indigo: the icon. Light values are checked to be at least 4.5:1 for the text drawn on them.
+private val IndigoLight = Swatch(
+    accent = Color(0xFF6D28D9), onAccent = Color(0xFFFFFFFF),
+    accentSoft = Color(0xFFEDE7FF), onAccentSoft = Color(0xFF3B1C7A),
+    paper = Color(0xFFF7F5FD), raised = Color(0xFFFFFFFF), deep = Color(0xFFECE8FB), hairline = Color(0xFFDCD6F2),
+    ink = Color(0xFF16122E), inkSoft = Color(0xFF5D5880),
 )
+private val IndigoDark = Swatch(
+    accent = Color(0xFFA78BFA), onAccent = Color(0xFF0D0C1D),
+    accentSoft = Color(0xFF2E2656), onAccentSoft = Color(0xFFE4DCFF),
+    paper = Color(0xFF0D0C1D), raised = Color(0xFF16142B), deep = Color(0xFF221F3D), hairline = Color(0xFF302C52),
+    ink = Color(0xFFF1EFFD), inkSoft = Color(0xFFA8A3C9),
+)
+
+// Classic: the warm off-white and ink look the app started with.
+private val ClassicLight = Swatch(
+    accent = Color(0xFF141413), onAccent = Color(0xFFFAF8F4),
+    accentSoft = Color(0xFFEFEBE4), onAccentSoft = Color(0xFF141413),
+    paper = Color(0xFFFAF8F4), raised = Color(0xFFEFEBE4), deep = Color(0xFFEFEBE4), hairline = Color(0xFFE3DED6),
+    ink = Color(0xFF141413), inkSoft = Color(0xFF6B6862),
+)
+private val ClassicDark = Swatch(
+    accent = Color(0xFFF2EFEA), onAccent = Color(0xFF121212),
+    accentSoft = Color(0xFF262624), onAccentSoft = Color(0xFFF2EFEA),
+    paper = Color(0xFF121212), raised = Color(0xFF1C1C1B), deep = Color(0xFF262624), hairline = Color(0xFF34332F),
+    ink = Color(0xFFF2EFEA), inkSoft = Color(0xFFA19C94),
+)
+
+// Mono: black, white and greys only.
+private val MonoLight = Swatch(
+    accent = Color(0xFF000000), onAccent = Color(0xFFFFFFFF),
+    accentSoft = Color(0xFFE8E8E8), onAccentSoft = Color(0xFF000000),
+    paper = Color(0xFFFFFFFF), raised = Color(0xFFF5F5F5), deep = Color(0xFFEBEBEB), hairline = Color(0xFFD4D4D4),
+    ink = Color(0xFF000000), inkSoft = Color(0xFF5C5C5C),
+)
+private val MonoDark = Swatch(
+    accent = Color(0xFFFFFFFF), onAccent = Color(0xFF000000),
+    accentSoft = Color(0xFF262626), onAccentSoft = Color(0xFFFFFFFF),
+    paper = Color(0xFF000000), raised = Color(0xFF111111), deep = Color(0xFF1F1F1F), hairline = Color(0xFF2E2E2E),
+    ink = Color(0xFFFFFFFF), inkSoft = Color(0xFFA6A6A6),
+)
+
+private fun swatchesFor(palette: AppPalette): Pair<Swatch, Swatch> = when (palette) {
+    AppPalette.Indigo -> IndigoLight to IndigoDark
+    AppPalette.Classic -> ClassicLight to ClassicDark
+    AppPalette.Mono -> MonoLight to MonoDark
+}
+
+private fun Swatch.toScheme(dark: Boolean): ColorScheme =
+    (if (dark) darkColorScheme() else lightColorScheme()).copy(
+        primary = accent,
+        onPrimary = onAccent,
+        primaryContainer = accentSoft,
+        onPrimaryContainer = onAccentSoft,
+        secondary = inkSoft,
+        onSecondary = paper,
+        secondaryContainer = deep,
+        onSecondaryContainer = ink,
+        tertiary = accent,
+        onTertiary = onAccent,
+        tertiaryContainer = accentSoft,
+        onTertiaryContainer = onAccentSoft,
+        surfaceTint = accent,
+        surfaceContainerLowest = paper,
+        surfaceContainerLow = raised,
+        surfaceContainer = raised,
+        surfaceContainerHigh = deep,
+        surfaceContainerHighest = hairline,
+        background = paper,
+        onBackground = ink,
+        surface = paper,
+        onSurface = ink,
+        surfaceVariant = deep,
+        onSurfaceVariant = inkSoft,
+        outline = inkSoft,
+        outlineVariant = hairline,
+    )
 
 /** Serif for titles, the default sans for everything you type into. */
 private val AppTypography = Typography().let { base ->
@@ -134,9 +166,14 @@ object Dimens {
 }
 
 @Composable
-fun FloatNoteTheme(content: @Composable () -> Unit) {
+fun FloatNoteTheme(palette: AppPalette = AppPalette.Indigo, content: @Composable () -> Unit) {
+    val dark = isSystemInDarkTheme()
+    val scheme = remember(palette, dark) {
+        val (light, darkSwatch) = swatchesFor(palette)
+        (if (dark) darkSwatch else light).toScheme(dark)
+    }
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
+        colorScheme = scheme,
         typography = AppTypography,
         content = content,
     )

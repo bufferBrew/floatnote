@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -27,6 +28,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.bufferbrew.floatnote.FloatNoteApp
 import com.bufferbrew.floatnote.ui.editor.NoteViewModel
 import com.bufferbrew.floatnote.ui.theme.FloatNoteTheme
 import com.bufferbrew.floatnote.voice.AppVoiceActions
@@ -56,6 +58,7 @@ class OverlayWindow(
     private val onClose: () -> Unit,
 ) {
     private val windowManager = context.getSystemService(WindowManager::class.java)
+    private val paletteState = (context.applicationContext as FloatNoteApp).palette
     private val owner = OverlayLifecycleOwner()
     private val voiceActions = AppVoiceActions(context, beforeOpeningScreen = { minimise() })
 
@@ -171,7 +174,8 @@ class OverlayWindow(
         // The pill and the bubble record into the open note, so make sure there is one.
         LaunchedEffect(compact, mode) { if (compact || mode == OverlayMode.Bubble) session.ensureOpen() }
         // Content alpha, not window alpha: see the class comment.
-        FloatNoteTheme {
+        val palette by paletteState.collectAsState()
+        FloatNoteTheme(palette) {
             when (mode) {
                 OverlayMode.Bubble -> OverlayBubble(
                     voiceState = { voice.state },

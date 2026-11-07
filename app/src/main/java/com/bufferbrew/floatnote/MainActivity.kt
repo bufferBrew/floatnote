@@ -114,7 +114,8 @@ class MainActivity : ComponentActivity() {
             val voiceActions = remember {
                 AppVoiceActions(this, requestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) })
             }
-            FloatNoteTheme {
+            val palette by app.palette.collectAsState()
+            FloatNoteTheme(palette) {
                 Surface(Modifier.fillMaxSize()) {
                     val contentModifier = Modifier
                         .safeDrawingPadding()
@@ -137,6 +138,8 @@ class MainActivity : ComponentActivity() {
                                     openNewNote = it
                                     overlayPrefs.openNewNote = it
                                 },
+                                palette = palette,
+                                onPaletteChange = app::setPalette,
                                 onExport = { exportNotes.launch("floatnote-backup.json") },
                                 onImport = { importNotes.launch(arrayOf("application/json", "text/plain", "*/*")) },
                                 backupMessage = backupMessage,
