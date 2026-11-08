@@ -11,6 +11,9 @@ import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 import android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 import android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 import android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -26,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.bufferbrew.floatnote.FloatNoteApp
@@ -67,6 +71,9 @@ class OverlayWindow(
     /** The preset the panel currently matches, for highlighting; null after a custom resize. */
     private var panelPreset by mutableStateOf<PanelSize?>(null)
     private var opacity by mutableFloatStateOf(prefs.opacity)
+
+    /** The opacity slider is being dragged: show the chosen opacity even while the panel is in use. */
+    private var previewingOpacity by mutableStateOf(false)
     private var focusable = true
 
     /** The panel is too small for the note and shows only the record pill. */
@@ -190,6 +197,14 @@ class OverlayWindow(
                     onDragEnd = { prefs.bubble = bubble },
                 )
                 OverlayMode.Panel -> Box(Modifier.fillMaxSize()) {
+                    // Fully visible while you're using the panel; your opacity once you go back to
+                    // the app underneath (the panel stays open). Dragging the slider previews it.
+                    val inUse = LocalWindowInfo.current.isWindowFocused && !previewingOpacity
+                    val shownOpacity by animateFloatAsState(
+                        targetValue = if (inUse) 1f else opacity,
+                        animationSpec = if (previewingOpacity) snap() else tween(PANEL_FADE_MS),
+                        label = "panelOpacity",
+                    )
                     if (compact) {
                         OverlayRecordPill(
                             voiceState = { voice.state },
@@ -208,10 +223,14 @@ class OverlayWindow(
                             voiceState = { voice.state },
                             voiceActions = voiceActions,
                             opacity = opacity,
+                            shownOpacity = { shownOpacity },
                             panelSize = panelPreset,
                             onPanelSize = ::applyPanelSize,
                             onOpacityChange = ::changeOpacity,
-                            onOpacityChangeFinished = { prefs.opacity = opacity },
+                            onOpacityChangeFinished = {
+                                prefs.opacity = opacity
+                                previewingOpacity = false
+                            },
                             onGeometryStart = { dragOrigin = panel },
                             onMove = { dx, dy -> movePanel(dx, dy) },
                             onGeometryDone = { savePanel() },
@@ -233,7 +252,7 @@ class OverlayWindow(
                                 resizing = false
                                 savePanel()
                             },
-                            modifier = Modifier.align(Alignment.BottomEnd).graphicsLayer { alpha = opacity },
+                            modifier = Modifier.align(Alignment.BottomEnd).graphicsLayer { alpha = shownOpacity },
                         )
                     }
                 }
@@ -267,6 +286,7 @@ class OverlayWindow(
 
     private fun changeOpacity(value: Float) {
         opacity = value.coerceIn(OverlayPrefs.MIN_OPACITY, 1f)
+        previewingOpacity = true
     }
 
     /** Where the window was when the current drag began; drags are offsets from here. */
@@ -386,6 +406,8 @@ class OverlayWindow(
     private companion object {
         val DEFAULT_SIZE = PanelSize.Small
         const val MAX_PRESET_SCALE = 1.5f
+        /** How long the panel takes to fade to or from the chosen opacity as focus changes. */
+        const val PANEL_FADE_MS = 200
         /** Below either of these the panel turns into the record pill. */
         const val FULL_MIN_WIDTH_DP = 180
         const val FULL_MIN_HEIGHT_DP = 160

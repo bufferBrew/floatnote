@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -80,6 +81,7 @@ import kotlin.math.sin
 /** Resting shape of the bubble's waveform, as fractions of full height. */
 private val RestingLevels = listOf(0.12f, 0.35f, 0.75f, 0.35f, 0.12f)
 private const val BubbleBars = 5
+private const val FocusedNoteBackgroundAlpha = 0.85f
 
 /**
  * The minimised state, in the style of Wispr Flow's floating bar: a small dark pill with a
@@ -340,6 +342,8 @@ fun OverlayPanel(
     panelSize: PanelSize?,
     onPanelSize: (PanelSize) -> Unit,
     opacity: Float,
+    /** What the panel draws at now: [opacity], or fully visible while it's in use. */
+    shownOpacity: () -> Float,
     onOpacityChange: (Float) -> Unit,
     onOpacityChangeFinished: () -> Unit,
     onGeometryStart: () -> Unit,
@@ -356,6 +360,7 @@ fun OverlayPanel(
     var showSwitcher by remember { mutableStateOf(false) }
     val notes by session.notes.collectAsState(initial = emptyList())
     val note = session.note
+    val focusedNote = note != null && LocalWindowInfo.current.isWindowFocused
     // Opening a note (from the switcher, history or list) always leaves the history view.
     LaunchedEffect(note?.id) {
         if (note != null) {
@@ -369,10 +374,11 @@ fun OverlayPanel(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { alpha = opacity }
+                .graphicsLayer { alpha = shownOpacity() }
                 .border(Dimens.Hairline, MaterialTheme.colorScheme.outlineVariant, shape),
             shape = shape,
-            color = MaterialTheme.colorScheme.surface,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = if (focusedNote) FocusedNoteBackgroundAlpha else 1f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
             shadowElevation = Dimens.ElevationPanel,
         ) {
             Box(Modifier.fillMaxSize()) {
