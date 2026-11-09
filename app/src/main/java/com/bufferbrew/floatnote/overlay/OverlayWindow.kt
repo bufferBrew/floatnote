@@ -39,6 +39,7 @@ import com.bufferbrew.floatnote.ui.theme.NotePaper
 import com.bufferbrew.floatnote.voice.AppVoiceActions
 import com.bufferbrew.floatnote.voice.AutoRecordEffect
 import com.bufferbrew.floatnote.voice.VoiceController
+import com.bufferbrew.floatnote.voice.VoiceEngine
 import com.bufferbrew.floatnote.voice.VoiceState
 
 enum class OverlayMode { Panel, Bubble }
@@ -191,7 +192,7 @@ class OverlayWindow(
                 OverlayMode.Bubble -> OverlayBubble(
                     voiceState = { voice.state },
                     opacity = opacity,
-                    onRecord = voiceActions::onMicToggle,
+                    onRecord = { recordFromSmall(::expand) },
                     onRetry = voiceActions::onRetry,
                     onCancel = voiceActions::onCancel,
                     onPauseToggle = voiceActions::onPauseToggle,
@@ -213,7 +214,7 @@ class OverlayWindow(
                         OverlayRecordPill(
                             voiceState = { voice.state },
                             opacity = opacity,
-                            onRecord = voiceActions::onMicToggle,
+                            onRecord = { recordFromSmall(::restoreFullSize) },
                             onCancel = voiceActions::onCancel,
                             onPauseToggle = voiceActions::onPauseToggle,
                             onRestore = ::restoreFullSize,
@@ -288,6 +289,16 @@ class OverlayWindow(
     private fun savePanel() {
         prefs.panel = panel
         if (!isCompact(panel)) prefs.fullPanel = panel
+    }
+
+    /**
+     * Record from the bubble or the pill. With Wispr Flow there's nothing to record here and no
+     * room to type, so [showNote] brings the note back first and the cursor goes to its end.
+     */
+    private fun recordFromSmall(showNote: () -> Unit) {
+        val wispr = (context.applicationContext as FloatNoteApp).voiceSettings.engine == VoiceEngine.Wispr
+        if (wispr && voice.state !is VoiceState.Recording) showNote()
+        voiceActions.onMicToggle()
     }
 
     private fun cyclePaper() {

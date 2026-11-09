@@ -87,6 +87,8 @@
     <string name="engine_device">This phone</string>
     <string name="engine_whisper">Whisper</string>
     <string name="engine_device_help">Uses your phone\'s speech recognizer: free, offline when the phone has a model for your language, and text appears as you talk.</string>
+    <string name="engine_wispr">Wispr Flow</string>
+    <string name="engine_wispr_help">Record puts the cursor on a new line at the end of the note, so the keyboard and Wispr Flow\'s bubble appear: tap the bubble and talk. Free with your Wispr plan; Perch doesn\'t record or upload anything. Also works with any keyboard\'s voice typing. The dictionary and AI clean-up don\'t apply to this text.</string>
     <string name="engine_whisper_help">Uploads each recording to a Whisper API. Usually more accurate; needs an API key and a connection.</string>
     <string name="settings_api_key">API key (Whisper and AI)</string>
     <string name="settings_api_key_saved">Saved. Type a new key to replace it.</string>

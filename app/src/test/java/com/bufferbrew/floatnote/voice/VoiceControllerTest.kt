@@ -183,6 +183,14 @@ class VoiceControllerTest {
     }
 
     @Test
+    fun `wispr engine never records, even when asked to start`() {
+        engine = VoiceEngine.Wispr
+        voice.start("n")
+        assertEquals(VoiceState.Idle, voice.state)
+        assertFalse(voice.isRecording)
+    }
+
+    @Test
     fun `device engine stops after silence, words count as speech`() {
         engine = VoiceEngine.Device
         val voice = silenceVoice()

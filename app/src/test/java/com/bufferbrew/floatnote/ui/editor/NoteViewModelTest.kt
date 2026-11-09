@@ -492,4 +492,17 @@ class NoteViewModelTest {
         vm.onUndoOrganise()
         assertEquals(before, vm.note)
     }
+
+    @Test
+    fun `focusEnd adds an empty line at the end and focuses it, then reuses it`() {
+        val vm = viewModel()
+        vm.focusEnd()
+        val added = vm.note!!.blocks.last()
+        assertEquals(Block.Text("new1", ""), added)
+        assertEquals("new1", vm.pendingFocus)
+        vm.onFocusConsumed()
+        vm.focusEnd()
+        assertEquals(3, vm.note!!.blocks.size)
+        assertEquals("new1", vm.pendingFocus)
+    }
 }

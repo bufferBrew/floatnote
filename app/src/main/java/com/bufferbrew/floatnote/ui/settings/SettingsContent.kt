@@ -167,7 +167,11 @@ private fun VoicePage(settings: VoiceSettings, recordings: RecordingStore, micGr
             VoiceEngine.entries.forEach { option ->
                 PillButton(
                     text = stringResource(
-                        if (option == VoiceEngine.Device) R.string.engine_device else R.string.engine_whisper
+                        when (option) {
+                            VoiceEngine.Whisper -> R.string.engine_whisper
+                            VoiceEngine.Device -> R.string.engine_device
+                            VoiceEngine.Wispr -> R.string.engine_wispr
+                        }
                     ),
                     onClick = {
                         engine = option
@@ -179,7 +183,11 @@ private fun VoicePage(settings: VoiceSettings, recordings: RecordingStore, micGr
         }
         Text(
             stringResource(
-                if (engine == VoiceEngine.Device) R.string.engine_device_help else R.string.engine_whisper_help
+                when (engine) {
+                    VoiceEngine.Whisper -> R.string.engine_whisper_help
+                    VoiceEngine.Device -> R.string.engine_device_help
+                    VoiceEngine.Wispr -> R.string.engine_wispr_help
+                }
             ),
             style = MaterialTheme.typography.bodySmall,
             color = colors.onSurfaceVariant,
@@ -191,7 +199,8 @@ private fun VoicePage(settings: VoiceSettings, recordings: RecordingStore, micGr
         label = stringResource(R.string.settings_model),
         help = stringResource(R.string.settings_model_help),
     )
-    SettingField(
+    // Wispr Flow has its own language settings.
+    if (engine != VoiceEngine.Wispr) SettingField(
         value = language,
         onChange = { language = it; settings.language = it },
         label = stringResource(R.string.settings_language),

@@ -98,10 +98,13 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   - Kept recordings: after transcription a clip goes to `data/RecordingStore` (`files/recordings`,
     300 MB cap, not backed up) and its name to `dictations.audio`; History plays it or sends it again
     (`FloatNoteApp.transcribeAgain`). Off with Settings → Voice → Keep recordings.
-  - Two engines (`VoiceEngine`, chosen in Settings): Whisper (record, then upload) and Device
+  - Engines (`VoiceEngine`, chosen in Settings): Whisper (record, then upload) and Device
     (`AndroidLiveRecognizer`: the phone's default recognition service first, the "on-device"
     recognizer API only as fallback; switches if one hears speech but returns empty text;
     restarted after each pause for continuous dictation; sentences land in the note as heard).
+    A third choice, Wispr Flow (`VoiceEngine.Wispr`), never records: Record calls `session.focusEnd()`
+    (cursor on an empty last line, so the keyboard and Wispr's bubble appear; the bubble and pill first
+    bring the note back). Wispr has no public API and its bubble needs the keyboard open.
   - `MediaAudioRecorder` (16 kHz mono AAC .m4a, live level), `WhisperClient` (OpenAI-compatible
     `/audio/transcriptions`, works with OpenAI or Groq), `VoiceSettings` (key encrypted with a
     Keystore AES-GCM key; base URL, model, language, auto-record).

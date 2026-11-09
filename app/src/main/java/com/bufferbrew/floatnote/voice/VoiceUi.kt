@@ -77,6 +77,12 @@ class AppVoiceActions(
 
     override fun onMicToggle() {
         val noteId = app.session.note?.id ?: return
+        // Wispr Flow: get a line ready to type on; the keyboard (and Wispr's bubble) follow.
+        // Anything already recording (from before the switch) is still stopped the usual way.
+        if (app.voiceSettings.engine == VoiceEngine.Wispr && app.voice.state !is VoiceState.Recording) {
+            app.session.focusEnd()
+            return
+        }
         // Not set up yet (Whisper without a key): toggle() explains; no point asking for the mic.
         if (app.voiceSettings.isReady && !context.hasMicPermission()) {
             requestMic?.let { it(); return }

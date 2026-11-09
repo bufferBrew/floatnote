@@ -408,6 +408,24 @@ class NoteViewModel(
         else if (focusedBlockId == blockId) focusedBlockId = null
     }
 
+    /**
+     * Puts the cursor on an empty line at the end of the note (reusing a blank last line), so
+     * the keyboard opens there. Used by Record when Wispr Flow does the dictation.
+     */
+    fun focusEnd() {
+        val current = note ?: return
+        val last = current.blocks.lastOrNull()
+        if (last is Block.Text && last.text.isBlank()) {
+            pendingFocus = last.id
+            return
+        }
+        edit { now ->
+            val (inserted, newId) = editor.insertAfter(now, null, BlockType.Text)
+            pendingFocus = newId
+            inserted
+        }
+    }
+
     override fun onFocusConsumed() {
         pendingFocus = null
     }

@@ -172,6 +172,8 @@ class VoiceController(
 
     fun start(noteId: String) {
         if (state is VoiceState.Recording || state is VoiceState.Transcribing) return
+        // Wispr Flow types into the note itself; Perch doesn't record (auto-record included).
+        if (engine() == VoiceEngine.Wispr) return
         if (engine() == VoiceEngine.Device) {
             startLive(noteId, fallback = false)
             return

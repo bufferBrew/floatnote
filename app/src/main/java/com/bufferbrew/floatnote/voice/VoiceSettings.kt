@@ -39,6 +39,14 @@ enum class VoiceEngine {
 
     /** Android's speech recognizer, offline when the phone has a model. Text appears live. */
     Device,
+
+    /**
+     * Wispr Flow (or any keyboard's voice typing). Perch never records: Record puts the cursor on
+     * a fresh line at the end of the note, which opens the keyboard and Wispr's bubble with it.
+     * Wispr has no public API and its bubble only shows with the keyboard, so this is as close
+     * as Perch can get. Stored by [name], so never rename it.
+     */
+    Wispr,
 }
 
 /**
@@ -75,7 +83,7 @@ class VoiceSettings(context: Context, private val cipher: SecretCipher = Keystor
         set(value) = prefs.edit().putString(KEY_ENGINE, value.name).apply()
 
     /** Whether recording can work without first visiting Settings. */
-    val isReady: Boolean get() = engine == VoiceEngine.Device || hasApiKey
+    val isReady: Boolean get() = engine != VoiceEngine.Whisper || hasApiKey
 
     var baseUrl: String
         get() = prefs.getString(KEY_BASE_URL, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL
