@@ -19,8 +19,16 @@
     <string name="open_floating_note">Open floating note</string>
     <string name="move_window">Drag to move</string>
     <string name="resize_window">Drag to resize</string>
-    <string name="adjust_window">Size and opacity</string>
+    <string name="adjust_window">Size, colour and opacity</string>
     <string name="panel_size">Size</string>
+    <string name="paper_colour">Colour</string>
+    <!-- The chip shows the current colour; a tap moves to the next. -->
+    <string name="paper_cycle">%1$s ↻</string>
+    <string name="paper_theme">Theme</string>
+    <string name="paper_yellow">Yellow</string>
+    <string name="paper_blue">Blue</string>
+    <string name="paper_pink">Pink</string>
+    <string name="paper_mint">Mint</string>
     <string name="size_small">S</string>
     <string name="size_medium">M</string>
     <string name="size_large">L</string>

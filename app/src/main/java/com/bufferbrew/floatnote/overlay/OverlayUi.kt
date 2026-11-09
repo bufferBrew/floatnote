@@ -70,6 +70,7 @@ import com.bufferbrew.floatnote.ui.history.HistoryContent
 import com.bufferbrew.floatnote.ui.list.NoteListContent
 import com.bufferbrew.floatnote.ui.theme.BubbleColors
 import com.bufferbrew.floatnote.ui.theme.Dimens
+import com.bufferbrew.floatnote.ui.theme.NotePaper
 import com.bufferbrew.floatnote.voice.VoiceActions
 import com.bufferbrew.floatnote.voice.VoiceState
 import com.bufferbrew.floatnote.voice.Waveform
@@ -344,6 +345,8 @@ fun OverlayPanel(
     opacity: Float,
     /** What the panel draws at now: [opacity], or fully visible while it's in use. */
     shownOpacity: () -> Float,
+    paper: NotePaper,
+    onPaperCycle: () -> Unit,
     onOpacityChange: (Float) -> Unit,
     onOpacityChangeFinished: () -> Unit,
     onGeometryStart: () -> Unit,
@@ -413,6 +416,7 @@ fun OverlayPanel(
                     )
                     if (showAdjust) {
                         SizeRow(panelSize, onPanelSize)
+                        PaperRow(paper, onPaperCycle)
                         OpacityRow(opacity, onOpacityChange, onOpacityChangeFinished)
                     }
                     if (note != null && showSwitcher) {
@@ -618,6 +622,32 @@ private fun SizeRow(current: PanelSize?, onSize: (PanelSize) -> Unit) {
                 dense = true,
             )
         }
+    }
+}
+
+/** One chip showing the note's colour; each tap moves to the next one. */
+@Composable
+private fun PaperRow(paper: NotePaper, onCycle: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = Dimens.SpaceXs),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.paper_colour),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val name = stringResource(
+            when (paper) {
+                NotePaper.Theme -> R.string.paper_theme
+                NotePaper.Yellow -> R.string.paper_yellow
+                NotePaper.Blue -> R.string.paper_blue
+                NotePaper.Pink -> R.string.paper_pink
+                NotePaper.Mint -> R.string.paper_mint
+            }
+        )
+        PillButton(stringResource(R.string.paper_cycle, name), onCycle, dense = true)
     }
 }
 

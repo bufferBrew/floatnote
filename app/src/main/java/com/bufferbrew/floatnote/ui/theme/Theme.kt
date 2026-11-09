@@ -29,6 +29,26 @@ enum class AppPalette(val key: String) {
     }
 }
 
+/**
+ * The floating note's paper, cycled from the panel's ◐ menu. [Theme] follows the app's palette
+ * (dark when the phone is); the others are always light sticky-note colours with dark text, so
+ * they read over any app. [key] is what's saved, so never rename it.
+ */
+enum class NotePaper(val key: String) {
+    Theme("theme"),
+    Yellow("yellow"),
+    Blue("blue"),
+    Pink("pink"),
+    Mint("mint");
+
+    /** The next colour, wrapping round to [Theme]. */
+    fun next(): NotePaper = entries[(ordinal + 1) % entries.size]
+
+    companion object {
+        fun fromKey(key: String?): NotePaper = entries.firstOrNull { it.key == key } ?: Theme
+    }
+}
+
 /** The handful of colours a palette is built from. Every role in the scheme maps to one of these. */
 private class Swatch(
     val accent: Color,
@@ -84,6 +104,27 @@ private val MonoDark = Swatch(
     paper = Color(0xFF000000), raised = Color(0xFF111111), deep = Color(0xFF1F1F1F), hairline = Color(0xFF2E2E2E),
     ink = Color(0xFFFFFFFF), inkSoft = Color(0xFFA6A6A6),
 )
+
+// Paper colours. Ink is near-black on all of them; inkSoft stays above 4.5:1 even on the
+// darker "deep" tone, and the palette's light accent (violet or black) is kept for buttons.
+private val PaperInk = Color(0xFF1C1A17)
+private val PaperInkSoft = Color(0xFF4D4940)
+
+private fun paperSwatch(paper: NotePaper, accent: Swatch): Swatch? {
+    val (base, raised, deep, hairline) = when (paper) {
+        NotePaper.Theme -> return null
+        NotePaper.Yellow -> listOf(0xFFFFF4B8, 0xFFFFF9D9, 0xFFFBE88A, 0xFFE3CC5C)
+        NotePaper.Blue -> listOf(0xFFDCEEFF, 0xFFEEF7FF, 0xFFC3E1FB, 0xFF9CC4E8)
+        NotePaper.Pink -> listOf(0xFFFFE0EC, 0xFFFFF0F5, 0xFFFBC8DB, 0xFFE8A6BF)
+        NotePaper.Mint -> listOf(0xFFDDF5E3, 0xFFEEFAF1, 0xFFC2EBCD, 0xFF9BD1AA)
+    }.map { Color(it) }
+    return Swatch(
+        accent = accent.accent, onAccent = accent.onAccent,
+        accentSoft = deep, onAccentSoft = PaperInk,
+        paper = base, raised = raised, deep = deep, hairline = hairline,
+        ink = PaperInk, inkSoft = PaperInkSoft,
+    )
+}
 
 private fun swatchesFor(palette: AppPalette): Pair<Swatch, Swatch> = when (palette) {
     AppPalette.Indigo -> IndigoLight to IndigoDark
@@ -166,11 +207,17 @@ object Dimens {
 }
 
 @Composable
-fun FloatNoteTheme(palette: AppPalette = AppPalette.Indigo, content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
-    val scheme = remember(palette, dark) {
+fun FloatNoteTheme(
+    palette: AppPalette = AppPalette.Indigo,
+    paper: NotePaper = NotePaper.Theme,
+    content: @Composable () -> Unit,
+) {
+    val systemDark = isSystemInDarkTheme()
+    val scheme = remember(palette, paper, systemDark) {
         val (light, darkSwatch) = swatchesFor(palette)
-        (if (dark) darkSwatch else light).toScheme(dark)
+        // A paper colour is always light, whatever the system setting.
+        paperSwatch(paper, light)?.toScheme(dark = false)
+            ?: (if (systemDark) darkSwatch else light).toScheme(systemDark)
     }
     MaterialTheme(
         colorScheme = scheme,

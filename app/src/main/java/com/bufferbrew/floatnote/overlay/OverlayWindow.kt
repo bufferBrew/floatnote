@@ -35,6 +35,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.bufferbrew.floatnote.FloatNoteApp
 import com.bufferbrew.floatnote.ui.editor.NoteViewModel
 import com.bufferbrew.floatnote.ui.theme.FloatNoteTheme
+import com.bufferbrew.floatnote.ui.theme.NotePaper
 import com.bufferbrew.floatnote.voice.AppVoiceActions
 import com.bufferbrew.floatnote.voice.AutoRecordEffect
 import com.bufferbrew.floatnote.voice.VoiceController
@@ -71,6 +72,9 @@ class OverlayWindow(
     /** The preset the panel currently matches, for highlighting; null after a custom resize. */
     private var panelPreset by mutableStateOf<PanelSize?>(null)
     private var opacity by mutableFloatStateOf(prefs.opacity)
+
+    /** The note's colour, cycled from the ◐ menu. */
+    private var paper by mutableStateOf(prefs.paper)
 
     /** The opacity slider is being dragged: show the chosen opacity even while the panel is in use. */
     private var previewingOpacity by mutableStateOf(false)
@@ -182,7 +186,7 @@ class OverlayWindow(
         LaunchedEffect(compact, mode) { if (compact || mode == OverlayMode.Bubble) session.ensureOpen() }
         // Content alpha, not window alpha: see the class comment.
         val palette by paletteState.collectAsState()
-        FloatNoteTheme(palette) {
+        FloatNoteTheme(palette, paper) {
             when (mode) {
                 OverlayMode.Bubble -> OverlayBubble(
                     voiceState = { voice.state },
@@ -226,6 +230,8 @@ class OverlayWindow(
                             shownOpacity = { shownOpacity },
                             panelSize = panelPreset,
                             onPanelSize = ::applyPanelSize,
+                            paper = paper,
+                            onPaperCycle = ::cyclePaper,
                             onOpacityChange = ::changeOpacity,
                             onOpacityChangeFinished = {
                                 prefs.opacity = opacity
@@ -282,6 +288,11 @@ class OverlayWindow(
     private fun savePanel() {
         prefs.panel = panel
         if (!isCompact(panel)) prefs.fullPanel = panel
+    }
+
+    private fun cyclePaper() {
+        paper = paper.next()
+        prefs.paper = paper
     }
 
     private fun changeOpacity(value: Float) {

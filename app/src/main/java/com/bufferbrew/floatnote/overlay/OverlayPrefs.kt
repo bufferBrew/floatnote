@@ -1,6 +1,7 @@
 package com.bufferbrew.floatnote.overlay
 
 import android.content.Context
+import com.bufferbrew.floatnote.ui.theme.NotePaper
 
 /**
  * Remembers where the floating window and bubble were and how see-through the window is.
@@ -13,6 +14,11 @@ class OverlayPrefs(context: Context) {
     var opacity: Float
         get() = prefs.getFloat(KEY_OPACITY, 1f).coerceIn(MIN_OPACITY, 1f)
         set(value) = prefs.edit().putFloat(KEY_OPACITY, value).apply()
+
+    /** The floating note's colour (◐ menu). */
+    var paper: NotePaper
+        get() = NotePaper.fromKey(prefs.getString(KEY_PAPER, null))
+        set(value) = prefs.edit().putString(KEY_PAPER, value.key).apply()
 
     /**
      * Saved panel geometry. Geometry saved before the size presets existed (layout version 1) is
@@ -71,6 +77,7 @@ class OverlayPrefs(context: Context) {
         private const val KEY_OPACITY = "opacity"
         private const val KEY_LAYOUT_VERSION = "layout_version"
         private const val KEY_OPEN_NEW = "open_new_note"
+        private const val KEY_PAPER = "paper"
         // 3: thinner presets; panels saved at the old sizes start over at the new small default.
         private const val LAYOUT_VERSION = 3
     }
