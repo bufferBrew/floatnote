@@ -4,6 +4,7 @@ import android.speech.SpeechRecognizer
 import com.bufferbrew.floatnote.R
 import com.bufferbrew.floatnote.voice.RecognizerPolicy.Action
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class RecognizerPolicyTest {
@@ -19,6 +20,31 @@ class RecognizerPolicyTest {
         val lang = SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE
         assertEquals(Action.UseDefaultService, RecognizerPolicy.onError(lang, usingOnDevice = true, stopping = false, reconnects = 0))
         assertEquals(Action.Fail(R.string.err_speech_language), RecognizerPolicy.onError(lang, false, false, 0))
+    }
+
+    @Test
+    fun `a rejected language is retried with relaxed options before failing`() {
+        val lang = SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
+        val online = RecognizerPolicy.ListenOptions("en", preferOffline = false)
+        assertEquals(Action.Retry(online), RecognizerPolicy.onError(lang, false, false, 0, relaxed = online))
+        assertEquals(Action.Finish, RecognizerPolicy.onError(lang, false, stopping = true, reconnects = 0, relaxed = online))
+    }
+
+    @Test
+    fun `relaxing a language goes online first, then to the phone's full tag, then gives up`() {
+        val phone = listOf("de-DE", "en-GB")
+        val offline = RecognizerPolicy.ListenOptions("en", preferOffline = true)
+        val online = RecognizerPolicy.relaxLanguage(offline, phone)
+        assertEquals(RecognizerPolicy.ListenOptions("en", preferOffline = false), online)
+        val tagged = RecognizerPolicy.relaxLanguage(online!!, phone)
+        assertEquals(RecognizerPolicy.ListenOptions("en-GB", preferOffline = false), tagged)
+        assertNull(RecognizerPolicy.relaxLanguage(tagged!!, phone))
+    }
+
+    @Test
+    fun `nothing to relax when online with the phone's language or no matching tag`() {
+        assertNull(RecognizerPolicy.relaxLanguage(RecognizerPolicy.ListenOptions("", preferOffline = false), listOf("en-GB")))
+        assertNull(RecognizerPolicy.relaxLanguage(RecognizerPolicy.ListenOptions("fr", preferOffline = false), listOf("en-GB")))
     }
 
     @Test

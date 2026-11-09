@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.LocaleList
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
@@ -97,6 +98,7 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
     }
     private var listener: LiveRecognizer.Listener? = null
     private var language = ""
+    private var preferOffline = true
     private var hints = ArrayList<String>()
     private var active = false
     private var stopping = false
@@ -111,6 +113,7 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
     override fun start(language: String, hints: List<String>, listener: LiveRecognizer.Listener) {
         cancel()
         this.language = language
+        preferOffline = true
         this.hints = ArrayList(hints)
         this.listener = listener
         active = true
@@ -198,7 +201,7 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
             Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOffline)
                 .apply { if (language.isNotBlank()) putExtra(RecognizerIntent.EXTRA_LANGUAGE, language) }
                 .apply {
                     if (hints.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -247,7 +250,11 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
         override fun onError(error: Int) {
             lastHeardAt = SystemClock.elapsedRealtime()
             Log.d(TAG, "recognizer error $error (onDevice=$usingOnDevice, stopping=$stopping)")
-            when (val action = RecognizerPolicy.onError(error, usingOnDevice, stopping, reconnects)) {
+            val relaxed = RecognizerPolicy.relaxLanguage(
+                RecognizerPolicy.ListenOptions(language, preferOffline),
+                LocaleList.getDefault().toLanguageTags().split(','),
+            )
+            when (val action = RecognizerPolicy.onError(error, usingOnDevice, stopping, reconnects, relaxed)) {
                 RecognizerPolicy.Action.KeepListening -> {
                     noteEmptyResult()
                     continueOrFinish()
@@ -255,6 +262,12 @@ class AndroidLiveRecognizer(private val context: Context) : LiveRecognizer {
                 RecognizerPolicy.Action.UseDefaultService -> {
                     usingOnDevice = false
                     if (active && !stopping) restartSoon(rebuildFirst = true) else finish()
+                }
+                is RecognizerPolicy.Action.Retry -> {
+                    Log.w(TAG, "language rejected; retrying with ${action.options}")
+                    language = action.options.language
+                    preferOffline = action.options.preferOffline
+                    restartSoon()
                 }
                 RecognizerPolicy.Action.Reconnect -> {
                     reconnects++
