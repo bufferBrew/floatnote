@@ -11,11 +11,11 @@ room {
 }
 
 android {
-    namespace = "com.bufferbrew.floatnote"
+    namespace = "com.bufferbrew.perch"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.bufferbrew.floatnote"
+        applicationId = "com.bufferbrew.perch"
         // 26 is the floor for TYPE_APPLICATION_OVERLAY.
         minSdk = 26
         targetSdk = 37
@@ -27,10 +27,10 @@ android {
 
     // Signing secrets: read from ~/.gradle/gradle.properties locally, or ORG_GRADLE_PROJECT_*
     // env vars in CI. Never commit them. Release signing is configured only when all are present.
-    val keystorePathProp = providers.gradleProperty("FLOATNOTE_KEYSTORE_PATH").orNull
-    val storePasswordProp = providers.gradleProperty("FLOATNOTE_STORE_PASSWORD").orNull
-    val keyAliasProp = providers.gradleProperty("FLOATNOTE_KEY_ALIAS").orNull
-    val keyPasswordProp = providers.gradleProperty("FLOATNOTE_KEY_PASSWORD").orNull
+    val keystorePathProp = providers.gradleProperty("PERCH_KEYSTORE_PATH").orNull
+    val storePasswordProp = providers.gradleProperty("PERCH_STORE_PASSWORD").orNull
+    val keyAliasProp = providers.gradleProperty("PERCH_KEY_ALIAS").orNull
+    val keyPasswordProp = providers.gradleProperty("PERCH_KEY_PASSWORD").orNull
     val hasSigningSecrets = keystorePathProp != null && storePasswordProp != null &&
         keyAliasProp != null && keyPasswordProp != null
 

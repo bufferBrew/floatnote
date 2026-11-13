@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The app's artwork plus a floating-window badge, so "Float note" is told apart from Perch on the home screen and Edge panel. -->
+<!-- The app's artwork plus a floating-window badge, so "Floating Perch" is told apart from Perch on the home screen and Edge panel. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@drawable/ic_launcher_art" />
     <item android:drawable="@drawable/ic_float_badge" />

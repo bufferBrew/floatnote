@@ -1,6 +1,6 @@
 # Perch: improvement backlog (2026-10-24)
 
-From a read-only review of the whole app. Paths are relative to `app/src/main/java/com/bufferbrew/floatnote/`.
+From a read-only review of the whole app. Paths are relative to `app/src/main/java/com/bufferbrew/perch/`.
 
 - **Priority:** P0 must fix, P1 should, P2 good to have, P3 nice to have.
 - **Effort:** S under 2 hours, M half a day to a day, L several days.
@@ -19,7 +19,7 @@ From a read-only review of the whole app. Paths are relative to `app/src/main/ja
 | 10 | Scroll to new dictation and new blocks in the editor | UX | P1 | S | **Done 2026-10-24** (scroll to new lines, follow dictation). The editor's LazyColumn never scrolls to added items |
 | 11 | TalkBack: read each checkbox together with its text | Accessibility | P1 | S | **Done 2026-10-24** (checkbox labels). `ui/editor/NoteEditorContent.kt`: checkboxes have no label |
 | 12 | Room migration test (1→2) and DAO tests | Tests | P1 | M | **Done 2026-10-24** (Robolectric migration + DAO tests). There's no androidTest folder |
-| 13 | Release signing, a single version source, an `assembleRelease` smoke test | Release | P1 | S | **Done 2026-10-24** (FLOATNOTE_* signing, version in gradle.properties, R8 build passes). No signingConfig, and the R8 rules file is empty |
+| 13 | Release signing, a single version source, an `assembleRelease` smoke test | Release | P1 | S | **Done 2026-10-24** (PERCH_* signing, version in gradle.properties, R8 build passes). No signingConfig, and the R8 rules file is empty |
 | 14 | Ask for notification permission in the Float flow (known issue) | Permissions | P1 | S | **Done 2026-10-24** (asked once). POST_NOTIFICATIONS is declared but never requested |
 | 15 | Load a note through the save mutex, inside a transaction | Data safety | P2 | S | **Done 2026-10-24** (load via the save lock, note+blocks in one transaction). Closing and quickly reopening a note can load a stale copy |
 | 16 | Build the overlay on a window context | Android versions | P2 | S | **Done 2026-10-24** (window context on Android 11+). Stale screen bounds on foldables, and a StrictMode violation |

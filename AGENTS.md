@@ -16,7 +16,7 @@ Solo developer, main-branch workflow.
    current app), with an opacity slider.
 3. **Feature parity**: everything in the full app (editing, all block types, both task
    modes, voice, opacity) must work in floating mode too. No floating-only gaps.
-4. **Quick launch**: a separate launcher entry "Float note" that can be added to the
+4. **Quick launch**: a separate launcher entry "Floating Perch" that can be added to the
    Samsung Edge panel and opens the floating note straight away. Also a Quick Settings tile
    and an app shortcut. The window minimises to a small bubble you can drag anywhere;
    the bubble's position is remembered.
@@ -57,7 +57,7 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - `data/db/`: Room `notes` + `blocks` tables (blocks cascade-delete). A save rewrites all of
   a note's blocks in one transaction. Schema JSON is exported to `app/schemas/`; commit it.
 - `data/NoteMapper.kt`, `data/NoteRepository.kt`: entity ↔ domain, `RoomNoteRepository`.
-- `FloatNoteApp`: manual DI root (`repository`, `persistScope`, `session`). `session` is the one
+- `PerchApp`: manual DI root (`repository`, `persistScope`, `session`). `session` is the one
   app-wide `NoteViewModel`, so the full app and the overlay edit the same in-memory note.
 - `ui/editor/NoteViewModel.kt`: the session (note list + open note). Holds the open note as Compose snapshot state (not a Flow, so
   text fields don't lose the cursor), with a debounced save plus `flush()` on stop/clear.
@@ -81,12 +81,12 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
     the window; Compose drag gestures jitter because the window moves under the finger.
   - `WindowGeometry.kt`: pure clamp/resize maths, unit-tested, plus `PanelSize` presets
     (S/M/L; default Small). The panel's ◐ button shows size chips and the opacity slider.
-- `FloatLaunchActivity`: the "Float note" launcher entry for the Edge panel, the QS tile, the
+- `FloatLaunchActivity`: the "Floating Perch" launcher entry for the Edge panel, the QS tile, the
   shortcuts and "Share to Perch" (shared text becomes a new note). No UI. Also asks
   for the mic on the overlay's behalf (`requestMicIntent`), since a Service can't.
 - `voice/`: voice notes.
   - `VoiceController`: record → transcribe → `session.addTranscript(noteId, text)`. One per
-    process (`FloatNoteApp.voice`), so bubble and editor share state. Keeps audio on failure for Retry.
+    process (`PerchApp.voice`), so bubble and editor share state. Keeps audio on failure for Retry.
     A Whisper clip pauses for a call or alarm and resumes in the same clip (`AudioInterruptions`:
     transient audio focus); the user can pause too (status strip, notification). It also transcribes
     audio shared to the app (`transcribeFiles`, a queue; `FloatLaunchActivity` copies the files,
@@ -96,7 +96,7 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
     phone's recognizer (`VoiceState.Recording.fallback`).
   - Kept recordings: after transcription a clip goes to `data/RecordingStore` (`files/recordings`,
     300 MB cap, not backed up) and its name to `dictations.audio`; History plays it or sends it again
-    (`FloatNoteApp.transcribeAgain`). Off with Settings → Voice → Keep recordings.
+    (`PerchApp.transcribeAgain`). Off with Settings → Voice → Keep recordings.
   - Two engines (`VoiceEngine`, chosen in Settings): Whisper (record, then upload) and Device
     (`AndroidLiveRecognizer`: the phone's default recognition service first, the "on-device"
     recognizer API only as fallback; switches if one hears speech but returns empty text;
@@ -204,8 +204,8 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
   in the `voice_secret` prefs file, which is excluded from backup (`res/xml/*_rules.xml`). It's
   only sent to https servers, and only to the host it was saved for until the user allows a new
   one. Never hardcode it, log it, or commit it.
-- Release signing: `FLOATNOTE_KEYSTORE_PATH`, `FLOATNOTE_STORE_PASSWORD`, `FLOATNOTE_KEY_ALIAS`,
-  `FLOATNOTE_KEY_PASSWORD` in `~/.gradle/gradle.properties`. Without them `assembleRelease` builds an
+- Release signing: `PERCH_KEYSTORE_PATH`, `PERCH_STORE_PASSWORD`, `PERCH_KEY_ALIAS`,
+  `PERCH_KEY_PASSWORD` in `~/.gradle/gradle.properties`. Without them `assembleRelease` builds an
   unsigned APK. The version is `VERSION_CODE` / `VERSION_NAME` in the project's gradle.properties.
 
 ## Change safety
