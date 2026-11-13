@@ -23,5 +23,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "floatnote"
+rootProject.name = "perch"
 include(":app")

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Long-press the FloatNote icon. Both go through the no-UI FloatLaunchActivity. -->
+<!-- Long-press the Perch icon. Both go through the no-UI FloatLaunchActivity. -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
         android:shortcutId="float"
@@ -8,8 +8,8 @@
         android:shortcutShortLabel="@string/shortcut_float">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetClass="com.bufferbrew.floatnote.FloatLaunchActivity"
-            android:targetPackage="com.bufferbrew.floatnote" />
+            android:targetClass="com.bufferbrew.perch.FloatLaunchActivity"
+            android:targetPackage="com.bufferbrew.perch" />
     </shortcut>
     <shortcut
         android:shortcutId="float_new"
@@ -18,8 +18,8 @@
         android:shortcutShortLabel="@string/shortcut_float_new">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetClass="com.bufferbrew.floatnote.FloatLaunchActivity"
-            android:targetPackage="com.bufferbrew.floatnote">
+            android:targetClass="com.bufferbrew.perch.FloatLaunchActivity"
+            android:targetPackage="com.bufferbrew.perch">
             <extra
                 android:name="new_note"
                 android:value="true" />

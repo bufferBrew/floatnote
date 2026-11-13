@@ -71,10 +71,10 @@
 - Status: open
 
 ## 2026-10-24 — Device speech engine restarts between sentences
-- What changed / what shortcut was taken: Android's recognizer ends at each pause, so `AndroidLiveRecognizer` restarts it after every sentence. A few hundred milliseconds of speech right at a restart can be missed, and some recognizers play a start/stop tone on each restart. Android 13's segmented sessions would avoid this but aren't used yet.
+- What changed / what shortcut was taken: Android's recognizer ends at each pause, so `AndroidLiveRecognizer` restarts it after every sentence. A few hundred milliseconds of speech right at a restart can be missed, and some recognizers play a start/stop tone on each restart. Android 13's segmented sessions would avoid this but aren't used yet. (2026-11-13: the wait before each restart cut from 150 ms to 50 ms; the recognizer's own start-up time remains. Words already shown when a session ends without a result are now kept.)
 - Ceiling (when this breaks): fast talkers who don't pause, or anyone bothered by the tones.
 - Upgrade trigger (what to do when it's hit): on API 33+, use `RecognizerIntent.EXTRA_SEGMENTED_SESSION` with `onSegmentResults`/`onEndOfSegmentedSession`.
-- Status: open
+- Status: resolved on Android 13+ when the recognition service supports segments (2026-11-13). Each session asks for 10 minutes of segments (`EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS`), so a restart happens once per 10 minutes instead of once per sentence. A service that answers with `onResults` or fails before its first segment is marked unsupported for the rest of the process and gets the old restart-per-sentence loop (`RecognizerPolicy.segmentsUnsupported`). **Not yet tried on the phone:** which mode Google's and Samsung's services honour is undocumented, and the minimum-length value is sent as an int as documented (a service reading a long would ignore it; the fallback covers that).
 
 ## 2026-10-24 — Device engine not yet tried on the phone (now tried)
 - What changed / what shortcut was taken: the controller logic is unit-tested with a fake recognizer, but the real `SpeechRecognizer` (offline model availability, background use from the floating window, Samsung vs Google recognizer) hasn't been run on the S25 Ultra yet.
@@ -85,7 +85,7 @@
 ## 2026-10-24 — Guards against the app getting stuck
 - What changed / what shortcut was taken: user reported the app "gets stuck at times". No crash or ANR was in the phone's log, so the fixes target every wait that could look frozen: Whisper uploads now have a 90 s overall limit and a Cancel button (audio kept for Retry); the device recognizer has an 8 s watchdog that reconnects a silent speech service (max 3 times in a row); window drags are measured from the drag start so the window can't fall out of step with the finger at a screen edge; the panel defaults to small (260×300 dp) so it covers less of the app underneath.
 - Ceiling (when this breaks): a stuck state not covered above.
-- Upgrade trigger (what to do when it's hit): ask what was on screen when it stuck, capture `adb logcat` (tag FloatNoteVoice) and `dumpsys window`, and add a guard for that case.
+- Upgrade trigger (what to do when it's hit): ask what was on screen when it stuck, capture `adb logcat` (tag PerchVoice) and `dumpsys window`, and add a guard for that case.
 - Status: resolved (2026-10-24). The real cause of "non-responsive" was found in the phone's input log: the opacity slider set window alpha, and Android drops all touches on windows below its alpha threshold. Opacity is now drawn as content alpha. CPU while listening also dropped from ~50% to ~5–10% (waveform drawn in one Canvas pass at 10 Hz, voice state read only where drawn).
 
 ## 2026-10-24 — Floating panel touch targets are 36 dp
@@ -126,7 +126,7 @@
 ## 2026-10-24 — Improvement backlog P1 items (#2–#14 in IMPROVEMENTS.md)
 - What changed / what shortcut was taken:
   - Launching: Quick Settings tile, app shortcuts ("Floating note", "New floating note"), and a
-    "Float note opens a new note" setting.
+    "Floating Perch opens a new note" setting.
   - Sharing: "Share to Perch" makes a new floating note; ✦ Share sends a note out.
   - Overlay Back on Android 13+ uses `OnBackInvokedCallback`.
   - Recording stops after 45 s of silence. A Whisper clip with no speech at all is dropped,
@@ -137,7 +137,7 @@
   - The editor scrolls to new lines and follows dictation when you're at the end.
   - Checkboxes are labelled for TalkBack.
   - Robolectric Room tests: the 1→2 migration and the DAOs.
-  - Release signing from `FLOATNOTE_*` properties; the version lives in gradle.properties.
+  - Release signing from `PERCH_*` properties; the version lives in gradle.properties.
   - All built and unit-tested (102 tests); not yet run on the phone.
 - Ceiling (when this breaks):
   - The silence thresholds (`RECORDER_QUIET` 0.05, `LIVE_QUIET` 0.3) are estimates. A noisy room
@@ -224,3 +224,9 @@
 - Limit: no Android device or emulator was connected during this pass. Compact controls retain their existing smaller dimensions to fit the floating panel.
 - Verification needed: light/dark themes, 200% font scale, keyboard/TalkBack navigation, and narrow floating windows including search and note actions.
 - Status: open (device visual/accessibility check pending)
+
+## 2026-11-10 — Renamed to Perch, new application ID
+- What changed / what shortcut was taken: package and `applicationId` are now `com.bufferbrew.perch` (database `perch.db`, Keystore alias `perch_whisper_key`, signing properties `PERCH_*`, hook override `PERCH_APK_DIR`). Android sees it as a new app: the old install keeps its notes, settings and API key. No in-app migration; move notes with Settings → Backup (export in the old app, import in Perch) and enter the key again. Import accepts any `"app"` name so old backups still load. The GitHub repo and the checkout folder are still called `floatnote`, so `PRIVACY.md` links to the old repo URL.
+- Ceiling (when this breaks): anyone else with the old app installed loses nothing but has to move notes by hand.
+- Upgrade trigger (what to do when it's hit): rename the repo (`gh repo rename perch`, update the remote and the PRIVACY link) and the folder; uninstall the old app once notes are imported.
+- Status: open
