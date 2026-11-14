@@ -1,6 +1,5 @@
 package com.bufferbrew.perch.ui.components
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -16,18 +15,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.bufferbrew.perch.ui.theme.Dimens
-import com.bufferbrew.perch.ui.theme.Motion
 
 /**
  * Soft rounded chip, the app's main control. [selected] fills it with the accent.
@@ -106,17 +101,5 @@ fun CircleButton(
                 modifier = Modifier.clearAndSetSemantics {},
             )
         }
-    }
-}
-
-/** Bring in the current page without keeping its predecessor interactive during the transition. */
-@Composable
-fun Modifier.pageEnter(page: Any, forward: Boolean = true): Modifier {
-    val progress = remember(page) { Animatable(0f) }
-    val distance = with(LocalDensity.current) { Dimens.SpaceS.toPx() } * if (forward) 1f else -1f
-    LaunchedEffect(progress) { progress.animateTo(1f, Motion.enter()) }
-    return graphicsLayer {
-        alpha = progress.value
-        translationY = distance * (1f - progress.value)
     }
 }

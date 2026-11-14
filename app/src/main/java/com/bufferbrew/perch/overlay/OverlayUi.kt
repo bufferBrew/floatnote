@@ -36,7 +36,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -68,7 +67,8 @@ import com.bufferbrew.perch.domain.model.NoteSummary
 import com.bufferbrew.perch.overlay.OverlayPrefs.Companion.MIN_OPACITY
 import com.bufferbrew.perch.ui.components.CircleButton
 import com.bufferbrew.perch.ui.components.PillButton
-import com.bufferbrew.perch.ui.components.pageEnter
+import com.bufferbrew.perch.ui.components.ScreenSwitcher
+import com.bufferbrew.perch.ui.components.rememberLast
 import com.bufferbrew.perch.ui.editor.NoteEditorContent
 import com.bufferbrew.perch.ui.editor.NoteViewModel
 import com.bufferbrew.perch.ui.editor.shareNote
@@ -456,78 +456,94 @@ fun OverlayPanel(
                             onCreate = session::createNote,
                         )
                     }
-                    val screen = note?.id ?: when {
-                        showHistory -> "history"
-                        showDictionary -> "dictionary"
-                        else -> "notes"
+                    val screen = when {
+                        note != null -> PanelScreen.Editor(note.id)
+                        showHistory -> PanelScreen.History
+                        showDictionary -> PanelScreen.Dictionary
+                        else -> PanelScreen.Notes
                     }
-                    val bodyModifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(start = Dimens.SpaceXs, end = Dimens.SpaceXs)
-                        .pageEnter(screen, forward = screen != "notes")
-                    if (note == null && showHistory) {
-                        val history by app.voiceRepository.observeHistory().collectAsState(initial = emptyList())
-                        HistoryContent(
-                            entries = history,
-                            onOpenNote = session::open,
-                            onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteDictation(id) } },
-                            onClear = { app.persistScope.launch { app.voiceRepository.clearHistory() } },
-                            onUseOriginal = { session.useOriginal(it.noteId, it.text, it.raw ?: it.text) },
-                            audioOf = { app.recordings.file(it.audio) },
-                            onTranscribeAgain = { app.transcribeAgainOrSay(it) },
-                            modifier = bodyModifier,
-                            compact = true,
-                        )
-                    } else if (note == null && showDictionary) {
-                        val vocabulary by app.vocabulary.collectAsState()
-                        DictionaryContent(
-                            entries = vocabulary,
-                            onAdd = { term, replacement ->
-                                app.persistScope.launch { app.voiceRepository.addVocab(term, replacement) }
-                            },
-                            onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteVocab(id) } },
-                            modifier = bodyModifier,
-                            compact = true,
-                        )
-                    } else if (note == null) {
-                        val results by session.searchResults.collectAsState(initial = null as List<NoteSummary>?)
-                        NoteListContent(
-                            notes = results,
-                            onOpen = session::open,
-                            onCreate = session::createNote,
-                            onDelete = session::deleteNote,
-                            modifier = bodyModifier,
-                            onHistory = { showHistory = true },
-                            onDictionary = { showDictionary = true },
-                            compact = true,
-                            deletedTitle = session.recentlyDeleted?.title,
-                            onUndoDelete = session::undoDelete,
-                            onDeletedDismissed = session::clearDeleted,
-                            query = session.query,
-                            onQueryChange = { session.query = it },
-                            onPin = session::setPinned,
-                            categoryFilter = session.categoryFilter,
-                            onCategoryFilter = { session.categoryFilter = it },
-                        )
-                    } else key(note.id) {
-                        NoteEditorContent(
-                            note = note,
-                            pendingFocus = session.pendingFocus,
-                            actions = session,
-                            voiceState = voiceState,
-                            voiceActions = voiceActions,
-                            modifier = bodyModifier,
-                            compact = true,
-                            assist = session.assist,
-                            canUndo = session.canUndo,
-                            canRedo = session.canRedo,
-                            onShare = {
-                                // The share sheet is an Activity: it would open under the panel.
-                                onMinimise()
-                                context.shareNote(note)
-                            },
-                        )
+                    // Back minimises the window (OverlayRootView), so no back target here:
+                    // the header's ‹ moves between these screens.
+                    ScreenSwitcher(
+                        screen = screen,
+                        depth = { if (it == PanelScreen.Notes) 0 else 1 },
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(start = Dimens.SpaceXs, end = Dimens.SpaceXs),
+                    ) { shown ->
+                        val bodyModifier = Modifier.fillMaxSize()
+                        when (shown) {
+                            PanelScreen.History -> {
+                                val history by app.voiceRepository.observeHistory().collectAsState(initial = emptyList())
+                                HistoryContent(
+                                    entries = history,
+                                    onOpenNote = session::open,
+                                    onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteDictation(id) } },
+                                    onClear = { app.persistScope.launch { app.voiceRepository.clearHistory() } },
+                                    onUseOriginal = { session.useOriginal(it.noteId, it.text, it.raw ?: it.text) },
+                                    audioOf = { app.recordings.file(it.audio) },
+                                    onTranscribeAgain = { app.transcribeAgainOrSay(it) },
+                                    modifier = bodyModifier,
+                                    compact = true,
+                                )
+                            }
+                            PanelScreen.Dictionary -> {
+                                val vocabulary by app.vocabulary.collectAsState()
+                                DictionaryContent(
+                                    entries = vocabulary,
+                                    onAdd = { term, replacement ->
+                                        app.persistScope.launch { app.voiceRepository.addVocab(term, replacement) }
+                                    },
+                                    onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteVocab(id) } },
+                                    modifier = bodyModifier,
+                                    compact = true,
+                                )
+                            }
+                            PanelScreen.Notes -> {
+                                val results by session.searchResults.collectAsState(initial = null as List<NoteSummary>?)
+                                NoteListContent(
+                                    notes = results,
+                                    onOpen = session::open,
+                                    onCreate = session::createNote,
+                                    onDelete = session::deleteNote,
+                                    modifier = bodyModifier,
+                                    onHistory = { showHistory = true },
+                                    onDictionary = { showDictionary = true },
+                                    compact = true,
+                                    deletedTitle = session.recentlyDeleted?.title,
+                                    onUndoDelete = session::undoDelete,
+                                    onDeletedDismissed = session::clearDeleted,
+                                    query = session.query,
+                                    onQueryChange = { session.query = it },
+                                    onPin = session::setPinned,
+                                    categoryFilter = session.categoryFilter,
+                                    onCategoryFilter = { session.categoryFilter = it },
+                                )
+                            }
+                            is PanelScreen.Editor -> {
+                                // Still drawn for a moment after closing, while it slides out.
+                                val shownNote = rememberLast(session.note?.takeIf { it.id == shown.noteId })
+                                    ?: return@ScreenSwitcher
+                                NoteEditorContent(
+                                    note = shownNote,
+                                    pendingFocus = session.pendingFocus,
+                                    actions = session,
+                                    voiceState = voiceState,
+                                    voiceActions = voiceActions,
+                                    modifier = bodyModifier,
+                                    compact = true,
+                                    assist = session.assist,
+                                    canUndo = session.canUndo,
+                                    canRedo = session.canRedo,
+                                    onShare = {
+                                        // The share sheet is an Activity: it would open under the panel.
+                                        onMinimise()
+                                        context.shareNote(shownNote)
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -780,4 +796,12 @@ internal fun ResizeHandle(
                 .background(MaterialTheme.colorScheme.onSurfaceVariant)
         )
     }
+}
+
+/** The floating panel's screens. Keys only: each screen reads its own live data. */
+private sealed interface PanelScreen {
+    data object Notes : PanelScreen
+    data object History : PanelScreen
+    data object Dictionary : PanelScreen
+    data class Editor(val noteId: String) : PanelScreen
 }

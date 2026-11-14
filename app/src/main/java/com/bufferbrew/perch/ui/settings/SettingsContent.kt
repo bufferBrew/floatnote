@@ -1,6 +1,5 @@
 package com.bufferbrew.perch.ui.settings
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,7 +20,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -49,7 +47,7 @@ import com.bufferbrew.perch.net.CheckLine
 import com.bufferbrew.perch.net.ConnectionCheck
 import com.bufferbrew.perch.ui.components.AppSwitch
 import com.bufferbrew.perch.ui.components.PillButton
-import com.bufferbrew.perch.ui.components.pageEnter
+import com.bufferbrew.perch.ui.components.ScreenSwitcher
 import com.bufferbrew.perch.ui.theme.AppPalette
 import com.bufferbrew.perch.ui.theme.Dimens
 import com.bufferbrew.perch.voice.VoiceEngine
@@ -95,14 +93,17 @@ fun SettingsContent(
 ) {
     var page by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
     val colors = MaterialTheme.colorScheme
-    // Registered after the host's handler, so Back leaves the page before it leaves Settings.
-    BackHandler(enabled = page != null) { page = null }
-
-    val current = page
-    key(current) {
+    // Its back handler is registered after the host's, so Back leaves the page before Settings.
+    ScreenSwitcher(
+        screen = page ?: SettingsMenuKey,
+        depth = { if (it == SettingsMenuKey) 0 else 1 },
+        backTo = SettingsMenuKey.takeIf { page != null },
+        onBack = { page = null },
+        modifier = modifier.fillMaxSize(),
+    ) { shown ->
+        val current = shown as? SettingsPage
         Column(
-            modifier = modifier.fillMaxSize()
-                .pageEnter(current ?: "menu", forward = current != null)
+            modifier = Modifier.fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = Dimens.SpaceM),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceM),
@@ -125,6 +126,9 @@ fun SettingsContent(
         }
     }
 }
+
+/** The Settings menu's place in [ScreenSwitcher]; the pages are [SettingsPage] values. */
+private object SettingsMenuKey
 
 @Composable
 private fun SettingsMenu(onOpen: (SettingsPage) -> Unit) {

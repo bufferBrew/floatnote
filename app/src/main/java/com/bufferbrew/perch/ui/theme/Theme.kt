@@ -191,6 +191,8 @@ object Dimens {
     val Icon = 24.dp
     val NoteCardWidth = 220.dp
     val ReadingWidth = 720.dp
+    /** How far a screen slides as it comes in or goes out. Opacity does most of the work. */
+    val ScreenSlide = 32.dp
     val CornerM = 12.dp
     val CornerL = 24.dp
     val Hairline = 1.dp
