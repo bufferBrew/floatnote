@@ -230,3 +230,16 @@
 - Ceiling (when this breaks): anyone else with the old app installed loses nothing but has to move notes by hand.
 - Upgrade trigger (what to do when it's hit): rename the repo (`gh repo rename perch`, update the remote and the PRIVACY link) and the folder; uninstall the old app once notes are imported.
 - Status: open
+
+## 2026-11-13 — UI and motion refresh
+- Verified on an Android 15 emulator: single- and two-column notes, light and dark appearance, search, Tab and Enter on New note, pinning, History, Dictionary, Settings, 200% text with animations disabled on the notes screen, task editing and recording in the floating panel, size preset changes, and bubble minimise and long-press restore.
+- Compact controls retain 36 dp targets in the floating panel. The app uses a stationary ellipsis during background transcription so the floating window does not need continuous animation frames.
+- Still to verify: TalkBack and Samsung Edge launch on hardware, end-to-end cloud transcription, and frame timing on a representative phone.
+
+## 2026-11-14 — Motion foundations, Baseline Profile, splash
+- Added: motion tokens (`ui/theme/Motion.kt`), one screen transition for both hosts with predictive back in the full app (`ui/components/Screens.kt`), panel ↔ bubble and open/close transitions on the overlay, back-swipe shrink on Android 14+, pressed dip and tap haptic on the bubble and pill, haptics on record and check-off, a window size class for the page margin, a Baseline Profile module and the splash screen library.
+- Verified on an Android 15 emulator (debug build, host heavily loaded): notes list → note → Back, Settings → page → Back (back to the menu) → Back (to the list), Float → minimise to the bubble → long-press back to the panel at the same place, ✕ closes the window and stops the service, splash on the app's paper colour. No crashes in logcat.
+- Not verified: how smooth any of it looks (the emulator ran far below real speed, so frame timing means nothing), the predictive back *preview* while dragging (only key-event Back was sent), the Android 14+ panel back-swipe shrink, haptics (emulator has no vibrator), Samsung Edge launch, TalkBack, tablet and foldable widths, and startup numbers from the macrobenchmark on a real phone.
+- Ceiling (when this breaks): a screen added outside `ScreenSwitcher` gets no transition and no predictive back; an animation timed with `delay()` ignores "Remove animations".
+- Upgrade trigger (what to do when it's hit): route new screens through `AppScreen` / `PanelScreen`; take timings from `Motion`.
+- Status: open

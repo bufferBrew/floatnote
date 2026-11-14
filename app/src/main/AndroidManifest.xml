@@ -34,6 +34,7 @@
 
         <activity
             android:name=".MainActivity"
+            android:theme="@style/Theme.Perch.Starting"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="true"
             android:launchMode="singleTop"

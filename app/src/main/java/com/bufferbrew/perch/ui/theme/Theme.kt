@@ -165,6 +165,7 @@ private fun Swatch.toScheme(dark: Boolean): ColorScheme =
 /** Serif for titles, the default sans for everything you type into. */
 private val AppTypography = Typography().let { base ->
     base.copy(
+        headlineLarge = base.headlineLarge.copy(fontFamily = FontFamily.Serif),
         headlineSmall = base.headlineSmall.copy(fontFamily = FontFamily.Serif),
         titleLarge = base.titleLarge.copy(fontFamily = FontFamily.Serif),
         titleMedium = base.titleMedium.copy(fontFamily = FontFamily.Serif),
@@ -186,6 +187,16 @@ object Dimens {
     val SpaceS = 8.dp
     val SpaceM = 16.dp
     val SpaceL = 20.dp
+    val SpaceXl = 32.dp
+    /** Page margin from medium width up (tablets, unfolded foldables); phones use [SpaceM]. */
+    val GutterWide = 24.dp
+    val Icon = 24.dp
+    val NoteCardWidth = 220.dp
+    val ReadingWidth = 720.dp
+    /** How far a screen slides as it comes in or goes out. Opacity does most of the work. */
+    val ScreenSlide = 32.dp
+    /** How far a pressed bubble or pill dips. */
+    const val PressedScale = 0.94f
     val CornerM = 12.dp
     val CornerL = 24.dp
     val Hairline = 1.dp

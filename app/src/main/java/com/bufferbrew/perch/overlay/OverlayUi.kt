@@ -1,10 +1,9 @@
 package com.bufferbrew.perch.overlay
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.border
@@ -42,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +68,8 @@ import com.bufferbrew.perch.domain.model.NoteSummary
 import com.bufferbrew.perch.overlay.OverlayPrefs.Companion.MIN_OPACITY
 import com.bufferbrew.perch.ui.components.CircleButton
 import com.bufferbrew.perch.ui.components.PillButton
+import com.bufferbrew.perch.ui.components.ScreenSwitcher
+import com.bufferbrew.perch.ui.components.rememberLast
 import com.bufferbrew.perch.ui.editor.NoteEditorContent
 import com.bufferbrew.perch.ui.editor.NoteViewModel
 import com.bufferbrew.perch.ui.editor.shareNote
@@ -77,13 +79,13 @@ import com.bufferbrew.perch.ui.list.NoteListContent
 import com.bufferbrew.perch.ui.theme.BubbleColors
 import com.bufferbrew.perch.ui.theme.Dimens
 import com.bufferbrew.perch.ui.theme.NotePaper
+import com.bufferbrew.perch.ui.theme.Motion
 import com.bufferbrew.perch.voice.VoiceActions
 import com.bufferbrew.perch.voice.VoiceState
 import com.bufferbrew.perch.voice.Waveform
+import com.bufferbrew.perch.voice.sampleAt
 import kotlinx.coroutines.launch
-import kotlin.math.PI
 import kotlin.math.roundToInt
-import kotlin.math.sin
 
 /** Resting shape of the bubble's waveform, as fractions of full height. */
 private val RestingLevels = listOf(0.12f, 0.35f, 0.75f, 0.35f, 0.12f)
@@ -92,7 +94,7 @@ private const val FocusedNoteBackgroundAlpha = 0.85f
 
 /**
  * The minimised state, in the style of Wispr Flow's floating bar: a small dark pill with a
- * waveform. While recording the bars follow your voice; while transcribing they pulse.
+ * waveform. While recording the bars follow your voice; while transcribing it shows an ellipsis.
  * Drag it anywhere. Tap starts listening; while recording it widens into the record pill's bar:
  * ✕ (throw it away), pause, the waveform (tap it, or ✓, to stop and add it to the note). Long-press
  * opens the panel; a tap never does. A tap while transcribing does nothing, and a tap after a
@@ -139,8 +141,14 @@ fun OverlayBubble(
         }
     )
     val openLabel = stringResource(R.string.open_floating_note)
+    // No ripple on a window-drag control: it dips while the finger rests on it instead.
+    var pressed by remember { mutableStateOf(false) }
+    val pressScale by animateFloatAsState(if (pressed) Dimens.PressedScale else 1f, Motion.snappy(), label = "press")
     val drag = Modifier
-        .windowDrag(onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap, onLongPress = onOpen)
+        .windowDrag(
+            onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap,
+            onLongPress = onOpen, onPressChange = { pressed = it },
+        )
         .semantics {
             role = Role.Button
             contentDescription = label
@@ -154,7 +162,11 @@ fun OverlayBubble(
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { alpha = opacity }
+            .graphicsLayer {
+                alpha = opacity
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(CircleShape)
             .background(BubbleColors.Fill)
             .border(Dimens.Hairline, BubbleColors.Edge, CircleShape),
@@ -162,15 +174,10 @@ fun OverlayBubble(
     ) {
         val bar = controls
         if (bar != null) {
-            RecordingBar(bar, drag, onCancel, onPauseToggle, onDone = onRecord) { BubbleWave(voiceState) }
+            RecordingBar(bar, drag, onCancel, onPauseToggle, onDone = onRecord) { BubbleIndicator(voiceState, recording = true) }
         } else {
             Box(drag.fillMaxSize(), contentAlignment = Alignment.Center) {
-                if (voiceState() is VoiceState.Error) {
-                    // Same mark as the record pill, so a failure is visible without opening the note.
-                    Text("!", style = MaterialTheme.typography.titleMedium, color = BubbleColors.Content, modifier = Modifier.clearAndSetSemantics {})
-                } else {
-                    BubbleWave(voiceState)
-                }
+                BubbleIndicator(voiceState, recording = false)
             }
         }
     }
@@ -207,30 +214,40 @@ private fun RowScope.RecordingBar(
 
 private enum class BubbleTap { Record, Stop, Retry, Busy }
 
-/** Its own scope, so only the bars redraw as the voice level changes. */
+/** Reads audio samples in the draw pass. Transcription uses a stationary busy indicator. */
 @Composable
-private fun BubbleWave(voiceState: () -> VoiceState) {
-    val state = voiceState()
-    val levels = when (state) {
-        // Mirror the latest samples around the centre bar, like a voice meter.
-        is VoiceState.Recording -> pillLevels(state)
-        VoiceState.Transcribing -> pulsingLevels()
-        else -> RestingLevels
+private fun BubbleIndicator(voiceState: () -> VoiceState, recording: Boolean, pill: Boolean = false) {
+    val symbol by remember(voiceState, pill) {
+        derivedStateOf {
+            when (voiceState()) {
+                VoiceState.Transcribing -> "…"
+                is VoiceState.Error -> "!"
+                VoiceState.Idle -> if (pill) "●" else null
+                is VoiceState.Recording -> null
+            }
+        }
     }
-    Waveform(levels.take(BubbleBars), BubbleColors.Content, Dimens.BubbleWaveMaxHeight, bars = BubbleBars)
-}
-
-/** A soft wave travelling across the bars while the clip is being transcribed. */
-@Composable
-private fun pulsingLevels(): List<Float> {
-    val transition = rememberInfiniteTransition(label = "transcribing")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(tween(durationMillis = 900, easing = LinearEasing)),
-        label = "phase",
-    )
-    return List(BubbleBars) { i -> 0.15f + 0.25f * (1 + sin(phase - i * 0.9f)) }
+    val glyph = symbol
+    if (glyph != null) {
+        Text(
+            glyph,
+            style = MaterialTheme.typography.titleMedium,
+            color = BubbleColors.Content,
+            modifier = Modifier.clearAndSetSemantics {},
+        )
+    } else {
+        Waveform(
+            levelAt = { index ->
+                if (recording) (voiceState() as? VoiceState.Recording)?.levels.sampleAt(
+                    index = minOf(index, BubbleBars - 1 - index),
+                    bars = 3,
+                ) else RestingLevels[index]
+            },
+            color = BubbleColors.Content,
+            maxHeight = Dimens.BubbleWaveMaxHeight,
+            bars = BubbleBars,
+        )
+    }
 }
 
 /**
@@ -251,23 +268,36 @@ fun OverlayRecordPill(
     onDrag: (Int, Int) -> Unit,
     onDragEnd: () -> Unit,
 ) {
-    // Read here, a leaf, so only the pill redraws as the voice level changes.
-    val state = voiceState()
+    val state by remember(voiceState) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            when (val current = voiceState()) {
+                is VoiceState.Recording -> current.copy(levels = emptyList(), elapsedMs = 0, partial = "")
+                else -> current
+            }
+        }
+    }
+    val current = state
     val recordLabel = stringResource(R.string.pill_record)
     val restoreLabel = stringResource(R.string.pill_restore)
     // An error needs the panel's strip (Retry, Settings), so a tap opens it.
-    val onTap: (() -> Unit)? = when (state) {
+    val onTap: (() -> Unit)? = when (current) {
         VoiceState.Idle -> onRecord
         is VoiceState.Error -> onRestore
         else -> null
     }
-    val tapLabel = when (state) {
-        is VoiceState.Error -> state.message
+    val tapLabel = when (current) {
+        is VoiceState.Error -> current.message
         VoiceState.Transcribing -> stringResource(R.string.voice_transcribing)
         else -> recordLabel
     }
+    // No ripple on a window-drag control: it dips while the finger rests on it instead.
+    var pressed by remember { mutableStateOf(false) }
+    val pressScale by animateFloatAsState(if (pressed) Dimens.PressedScale else 1f, Motion.snappy(), label = "press")
     val drag = Modifier
-        .windowDrag(onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap, onLongPress = onRestore)
+        .windowDrag(
+            onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap,
+            onLongPress = onRestore, onPressChange = { pressed = it },
+        )
         .semantics {
             role = Role.Button
             contentDescription = tapLabel
@@ -277,27 +307,23 @@ fun OverlayRecordPill(
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { alpha = opacity }
+            .graphicsLayer {
+                alpha = opacity
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(CircleShape)
             .background(BubbleColors.Fill)
             .border(Dimens.Hairline, BubbleColors.Edge, CircleShape),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (state is VoiceState.Recording) {
-            RecordingBar(BarControls(state.canPause, state.paused), drag, onCancel, onPauseToggle, onDone = onRecord) {
-                Waveform(pillLevels(state), BubbleColors.Content, Dimens.BubbleWaveMaxHeight, bars = BubbleBars)
+        if (current is VoiceState.Recording) {
+            RecordingBar(BarControls(current.canPause, current.paused), drag, onCancel, onPauseToggle, onDone = onRecord) {
+                BubbleIndicator(voiceState, recording = true)
             }
         } else {
             Box(drag.fillMaxSize(), contentAlignment = Alignment.Center) {
-                when (state) {
-                    VoiceState.Transcribing -> Waveform(pulsingLevels(), BubbleColors.Content, Dimens.BubbleWaveMaxHeight, bars = BubbleBars)
-                    else -> Text(
-                        if (state is VoiceState.Error) "!" else "●",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = BubbleColors.Content,
-                        modifier = Modifier.clearAndSetSemantics {},
-                    )
-                }
+                BubbleIndicator(voiceState, recording = false, pill = true)
             }
         }
     }
@@ -324,12 +350,6 @@ private fun RecordPillButton(glyph: String, label: String, onClick: () -> Unit) 
             }
         }
     }
-}
-
-/** The latest samples mirrored around the centre bar, like the bubble. */
-private fun pillLevels(state: VoiceState.Recording): List<Float> {
-    val recent = state.levels.takeLast(3).let { List(3 - it.size) { 0f } + it }
-    return listOf(recent[0], recent[1], recent[2], recent[1], recent[0])
 }
 
 /**
@@ -369,7 +389,6 @@ fun OverlayPanel(
     var showSwitcher by remember { mutableStateOf(false) }
     /** ◐ is being dragged up or down: the title shows the opacity instead. */
     var draggingOpacity by remember { mutableStateOf(false) }
-    val notes by session.notes.collectAsState(initial = emptyList())
     val note = session.note
     val focusedNote = note != null && LocalWindowInfo.current.isWindowFocused
     // Opening a note (from the switcher, history or list) always leaves the history view.
@@ -396,11 +415,11 @@ fun OverlayPanel(
         ) {
             Box(Modifier.fillMaxSize()) {
                 // Header buttons sit SpaceXs from the edge; text and the body get the same
-                // SpaceS on both sides. Bottom padding keeps the chip row clear of the resize corner.
+                // SpaceS on both sides. Reserve the resize handle's entire touch area.
                 Column(
                     Modifier
                         .fillMaxSize()
-                        .padding(start = Dimens.SpaceXs, top = Dimens.SpaceXs, end = Dimens.SpaceXs, bottom = Dimens.SpaceM),
+                        .padding(start = Dimens.SpaceXs, top = Dimens.SpaceXs, end = Dimens.SpaceXs, bottom = Dimens.HeaderButton),
                 ) {
                     PanelHeader(
                         title = when {
@@ -435,7 +454,11 @@ fun OverlayPanel(
                         onMinimise = onMinimise,
                         onClose = onClose,
                     )
-                    if (showAdjust) {
+                    AnimatedVisibility(
+                        visible = showAdjust,
+                        enter = fadeIn(Motion.fade()),
+                        exit = fadeOut(Motion.fade()),
+                    ) {
                         Column(
                             Modifier.padding(horizontal = Dimens.SpaceXs, vertical = Dimens.SpaceXs),
                             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
@@ -446,6 +469,7 @@ fun OverlayPanel(
                         }
                     }
                     if (note != null && showSwitcher) {
+                        val notes by session.notes.collectAsState(initial = emptyList())
                         NoteSwitcher(
                             notes = notes,
                             currentId = note.id,
@@ -453,72 +477,94 @@ fun OverlayPanel(
                             onCreate = session::createNote,
                         )
                     }
-                    val bodyModifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(start = Dimens.SpaceXs, end = Dimens.SpaceXs)
-                    if (note == null && showHistory) {
-                        val history by app.voiceRepository.observeHistory().collectAsState(initial = emptyList())
-                        HistoryContent(
-                            entries = history,
-                            onOpenNote = session::open,
-                            onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteDictation(id) } },
-                            onClear = { app.persistScope.launch { app.voiceRepository.clearHistory() } },
-                            onUseOriginal = { session.useOriginal(it.noteId, it.text, it.raw ?: it.text) },
-                            audioOf = { app.recordings.file(it.audio) },
-                            onTranscribeAgain = { app.transcribeAgainOrSay(it) },
-                            modifier = bodyModifier,
-                            compact = true,
-                        )
-                    } else if (note == null && showDictionary) {
-                        val vocabulary by app.vocabulary.collectAsState()
-                        DictionaryContent(
-                            entries = vocabulary,
-                            onAdd = { term, replacement ->
-                                app.persistScope.launch { app.voiceRepository.addVocab(term, replacement) }
-                            },
-                            onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteVocab(id) } },
-                            modifier = bodyModifier,
-                            compact = true,
-                        )
-                    } else if (note == null) {
-                        val results by session.searchResults.collectAsState(initial = emptyList())
-                        NoteListContent(
-                            notes = results,
-                            onOpen = session::open,
-                            onCreate = session::createNote,
-                            onDelete = session::deleteNote,
-                            modifier = bodyModifier,
-                            onHistory = { showHistory = true },
-                            onDictionary = { showDictionary = true },
-                            compact = true,
-                            deletedTitle = session.recentlyDeleted?.title,
-                            onUndoDelete = session::undoDelete,
-                            onDeletedDismissed = session::clearDeleted,
-                            query = session.query,
-                            onQueryChange = { session.query = it },
-                            onPin = session::setPinned,
-                            categoryFilter = session.categoryFilter,
-                            onCategoryFilter = { session.categoryFilter = it },
-                        )
-                    } else {
-                        NoteEditorContent(
-                            note = note,
-                            pendingFocus = session.pendingFocus,
-                            actions = session,
-                            voiceState = voiceState,
-                            voiceActions = voiceActions,
-                            modifier = bodyModifier,
-                            compact = true,
-                            assist = session.assist,
-                            canUndo = session.canUndo,
-                            canRedo = session.canRedo,
-                            onShare = {
-                                // The share sheet is an Activity: it would open under the panel.
-                                onMinimise()
-                                context.shareNote(note)
-                            },
-                        )
+                    val screen = when {
+                        note != null -> PanelScreen.Editor(note.id)
+                        showHistory -> PanelScreen.History
+                        showDictionary -> PanelScreen.Dictionary
+                        else -> PanelScreen.Notes
+                    }
+                    // Back minimises the window (OverlayRootView), so no back target here:
+                    // the header's ‹ moves between these screens.
+                    ScreenSwitcher(
+                        screen = screen,
+                        depth = { if (it == PanelScreen.Notes) 0 else 1 },
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(start = Dimens.SpaceXs, end = Dimens.SpaceXs),
+                    ) { shown ->
+                        val bodyModifier = Modifier.fillMaxSize()
+                        when (shown) {
+                            PanelScreen.History -> {
+                                val history by app.voiceRepository.observeHistory().collectAsState(initial = emptyList())
+                                HistoryContent(
+                                    entries = history,
+                                    onOpenNote = session::open,
+                                    onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteDictation(id) } },
+                                    onClear = { app.persistScope.launch { app.voiceRepository.clearHistory() } },
+                                    onUseOriginal = { session.useOriginal(it.noteId, it.text, it.raw ?: it.text) },
+                                    audioOf = { app.recordings.file(it.audio) },
+                                    onTranscribeAgain = { app.transcribeAgainOrSay(it) },
+                                    modifier = bodyModifier,
+                                    compact = true,
+                                )
+                            }
+                            PanelScreen.Dictionary -> {
+                                val vocabulary by app.vocabulary.collectAsState()
+                                DictionaryContent(
+                                    entries = vocabulary,
+                                    onAdd = { term, replacement ->
+                                        app.persistScope.launch { app.voiceRepository.addVocab(term, replacement) }
+                                    },
+                                    onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteVocab(id) } },
+                                    modifier = bodyModifier,
+                                    compact = true,
+                                )
+                            }
+                            PanelScreen.Notes -> {
+                                val results by session.searchResults.collectAsState(initial = null as List<NoteSummary>?)
+                                NoteListContent(
+                                    notes = results,
+                                    onOpen = session::open,
+                                    onCreate = session::createNote,
+                                    onDelete = session::deleteNote,
+                                    modifier = bodyModifier,
+                                    onHistory = { showHistory = true },
+                                    onDictionary = { showDictionary = true },
+                                    compact = true,
+                                    deletedTitle = session.recentlyDeleted?.title,
+                                    onUndoDelete = session::undoDelete,
+                                    onDeletedDismissed = session::clearDeleted,
+                                    query = session.query,
+                                    onQueryChange = { session.query = it },
+                                    onPin = session::setPinned,
+                                    categoryFilter = session.categoryFilter,
+                                    onCategoryFilter = { session.categoryFilter = it },
+                                )
+                            }
+                            is PanelScreen.Editor -> {
+                                // Still drawn for a moment after closing, while it slides out.
+                                val shownNote = rememberLast(session.note?.takeIf { it.id == shown.noteId })
+                                    ?: return@ScreenSwitcher
+                                NoteEditorContent(
+                                    note = shownNote,
+                                    pendingFocus = session.pendingFocus,
+                                    actions = session,
+                                    voiceState = voiceState,
+                                    voiceActions = voiceActions,
+                                    modifier = bodyModifier,
+                                    compact = true,
+                                    assist = session.assist,
+                                    canUndo = session.canUndo,
+                                    canRedo = session.canRedo,
+                                    onShare = {
+                                        // The share sheet is an Activity: it would open under the panel.
+                                        onMinimise()
+                                        context.shareNote(shownNote)
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -673,7 +719,7 @@ private const val SWITCHER_LABEL_CHARS = 18
 @Composable
 private fun SizeRow(current: PanelSize?, onSize: (PanelSize) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -703,7 +749,7 @@ private fun SizeRow(current: PanelSize?, onSize: (PanelSize) -> Unit) {
 @Composable
 private fun PaperRow(paper: NotePaper, onCycle: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -771,4 +817,12 @@ internal fun ResizeHandle(
                 .background(MaterialTheme.colorScheme.onSurfaceVariant)
         )
     }
+}
+
+/** The floating panel's screens. Keys only: each screen reads its own live data. */
+private sealed interface PanelScreen {
+    data object Notes : PanelScreen
+    data object History : PanelScreen
+    data object Dictionary : PanelScreen
+    data class Editor(val noteId: String) : PanelScreen
 }

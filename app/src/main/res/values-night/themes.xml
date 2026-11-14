@@ -1,4 +1,6 @@
 <resources>
     <!-- Dark mode: a dark window from the first frame, so there's no white flash before Compose draws. -->
-    <style name="Theme.Perch" parent="android:Theme.Material.NoActionBar" />
+    <style name="Theme.Perch" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_paper</item>
+    </style>
 </resources>

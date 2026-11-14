@@ -8,12 +8,11 @@ import android.os.Build
 import android.os.Bundle
 import android.net.Uri
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,13 +20,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -38,6 +42,9 @@ import com.bufferbrew.perch.overlay.OverlayPrefs
 import com.bufferbrew.perch.overlay.OverlayService
 import com.bufferbrew.perch.overlay.openFloatingNote
 import com.bufferbrew.perch.ui.components.PillButton
+import com.bufferbrew.perch.ui.components.ScreenSwitcher
+import com.bufferbrew.perch.ui.components.rememberLast
+import com.bufferbrew.perch.domain.model.NoteSummary
 import com.bufferbrew.perch.ui.editor.NoteEditorContent
 import com.bufferbrew.perch.ui.editor.shareNote
 import com.bufferbrew.perch.ui.dictionary.DictionaryContent
@@ -100,7 +107,9 @@ class MainActivity : ComponentActivity() {
         micGranted = it
     }
 
+    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         micGranted = hasMicPermission()
@@ -115,18 +124,32 @@ class MainActivity : ComponentActivity() {
                 AppVoiceActions(this, requestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) })
             }
             val palette by app.palette.collectAsState()
+            // Material 3 margins: 16 dp on phones, 24 dp from medium width up. Columns and the
+            // reading width are worked out from the content's own slot, not from this.
+            val gutter = if (calculateWindowSizeClass(this).widthSizeClass == WindowWidthSizeClass.Compact) {
+                Dimens.SpaceM
+            } else {
+                Dimens.GutterWide
+            }
             PerchTheme(palette) {
-                Surface(Modifier.fillMaxSize()) {
-                    val contentModifier = Modifier
-                        .safeDrawingPadding()
-                        .imePadding()
-                        .padding(horizontal = Dimens.SpaceM)
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val note = session.note
                     AutoRecordEffect(note?.id)
-                    when {
-                        showSettings -> {
-                            BackHandler { showSettings = false }
-                            SettingsContent(
+                    val stateHolder = rememberSaveableStateHolder()
+                    ScreenSwitcher(
+                        screen = currentScreen(),
+                        depth = { if (it == AppScreen.Notes) 0 else 1 },
+                        backTo = AppScreen.Notes.takeIf { currentScreen() != AppScreen.Notes },
+                        onBack = ::goBack,
+                        contentAlignment = Alignment.TopCenter,
+                        modifier = Modifier.fillMaxSize().safeDrawingPadding().imePadding(),
+                    ) { screen ->
+                        val contentModifier = Modifier
+                            .widthIn(max = Dimens.ReadingWidth)
+                            .fillMaxSize()
+                            .padding(horizontal = gutter)
+                        when (screen) {
+                            AppScreen.Settings -> SettingsContent(
                                 settings = app.voiceSettings,
                                 categories = app.categoryContext,
                                 connectionCheck = app.connectionCheck,
@@ -146,23 +169,12 @@ class MainActivity : ComponentActivity() {
                                 markdownFolder = markdownFolder,
                                 onChooseMarkdownFolder = { chooseMarkdownFolder.launch(null) },
                                 onStopMarkdown = { setMarkdownFolder(null) },
-                                onBack = {
-                                    showSettings = false
-                                    backupMessage = null
-                                },
+                                onBack = ::goBack,
                                 modifier = contentModifier,
                             )
-                        }
-                        showDictionary && note == null -> {
-                            BackHandler { showDictionary = false }
-                            val vocabulary by app.vocabulary.collectAsState()
-                            Column(contentModifier) {
-                                TextButton(onClick = { showDictionary = false }) {
-                                    Text(
-                                        stringResource(R.string.back_to_notes),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                            AppScreen.Dictionary -> Column(contentModifier) {
+                                BackToNotes(::goBack)
+                                val vocabulary by app.vocabulary.collectAsState()
                                 DictionaryContent(
                                     entries = vocabulary,
                                     onAdd = { term, replacement ->
@@ -172,17 +184,9 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.weight(1f),
                                 )
                             }
-                        }
-                        showHistory && note == null -> {
-                            BackHandler { showHistory = false }
-                            val history by app.voiceRepository.observeHistory().collectAsState(initial = emptyList())
-                            Column(contentModifier) {
-                                TextButton(onClick = { showHistory = false }) {
-                                    Text(
-                                        stringResource(R.string.back_to_notes),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                            AppScreen.History -> Column(contentModifier) {
+                                BackToNotes(::goBack)
+                                val history by app.voiceRepository.observeHistory().collectAsState(initial = emptyList())
                                 HistoryContent(
                                     entries = history,
                                     onOpenNote = {
@@ -197,26 +201,18 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.weight(1f),
                                 )
                             }
-                        }
-                        note == null -> {
-                            val notes by session.searchResults.collectAsState(initial = emptyList())
-                            Column(contentModifier) {
-                                Row(
-                                    Modifier.padding(top = Dimens.SpaceS),
-                                    horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
-                                ) {
-                                    Spacer(Modifier.weight(1f))
-                                    PillButton(stringResource(R.string.settings), { showSettings = true })
-                                    FloatButton()
-                                }
+                            AppScreen.Notes -> stateHolder.SaveableStateProvider("notes") {
+                                val notes by session.searchResults.collectAsState(initial = null as List<NoteSummary>?)
                                 NoteListContent(
                                     notes = notes,
                                     onOpen = session::open,
                                     onCreate = session::createNote,
                                     onDelete = session::deleteNote,
-                                    modifier = Modifier.weight(1f),
+                                    modifier = contentModifier,
                                     onHistory = { showHistory = true },
                                     onDictionary = { showDictionary = true },
+                                    onSettings = { showSettings = true },
+                                    onFloat = ::float,
                                     deletedTitle = session.recentlyDeleted?.title,
                                     onUndoDelete = session::undoDelete,
                                     onDeletedDismissed = session::clearDeleted,
@@ -227,37 +223,59 @@ class MainActivity : ComponentActivity() {
                                     onCategoryFilter = { session.categoryFilter = it },
                                 )
                             }
-                        }
-                        else -> {
-                            BackHandler { session.closeNote() }
-                            Column(contentModifier) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(onClick = session::closeNote) {
-                                        Text(
-                                            stringResource(R.string.back_to_notes),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
+                            is AppScreen.Editor -> {
+                                // Still drawn for a moment after closing, while it slides out.
+                                val shown = rememberLast(session.note?.takeIf { it.id == screen.noteId }) ?: return@ScreenSwitcher
+                                Column(contentModifier) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        BackToNotes(::goBack)
+                                        Spacer(Modifier.weight(1f))
+                                        FloatButton()
                                     }
-                                    Spacer(Modifier.weight(1f))
-                                    FloatButton()
+                                    NoteEditorContent(
+                                        note = shown,
+                                        pendingFocus = session.pendingFocus,
+                                        actions = session,
+                                        voiceState = { app.voice.state },
+                                        voiceActions = voiceActions,
+                                        modifier = Modifier.weight(1f),
+                                        assist = session.assist,
+                                        canUndo = session.canUndo,
+                                        canRedo = session.canRedo,
+                                        onShare = { shareNote(shown) },
+                                    )
                                 }
-                                NoteEditorContent(
-                                    note = note,
-                                    pendingFocus = session.pendingFocus,
-                                    actions = session,
-                                    voiceState = { app.voice.state },
-                                    voiceActions = voiceActions,
-                                    modifier = Modifier.weight(1f),
-                                    assist = session.assist,
-                                    canUndo = session.canUndo,
-                                    canRedo = session.canRedo,
-                                    onShare = { shareNote(note) },
-                                )
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    /** Which screen the app state points at. Settings wins, then an open note. */
+    private fun currentScreen(): AppScreen {
+        val note = session.note
+        return when {
+            showSettings -> AppScreen.Settings
+            note != null -> AppScreen.Editor(note.id)
+            showDictionary -> AppScreen.Dictionary
+            showHistory -> AppScreen.History
+            else -> AppScreen.Notes
+        }
+    }
+
+    /** One level up, to the notes list. The same for ‹ Notes and the system back gesture. */
+    private fun goBack() {
+        when (currentScreen()) {
+            AppScreen.Settings -> {
+                showSettings = false
+                backupMessage = null
+            }
+            is AppScreen.Editor -> session.closeNote()
+            AppScreen.Dictionary -> showDictionary = false
+            AppScreen.History -> showHistory = false
+            AppScreen.Notes -> Unit
         }
     }
 
@@ -336,5 +354,21 @@ class MainActivity : ComponentActivity() {
             Intent(context, MainActivity::class.java)
                 .putExtra(EXTRA_SETTINGS, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    }
+}
+
+/** The full app's screens. Keys only: each screen reads its own live data. */
+private sealed interface AppScreen {
+    data object Notes : AppScreen
+    data object Settings : AppScreen
+    data object History : AppScreen
+    data object Dictionary : AppScreen
+    data class Editor(val noteId: String) : AppScreen
+}
+
+@Composable
+private fun BackToNotes(onClick: () -> Unit) {
+    TextButton(onClick = onClick) {
+        Text(stringResource(R.string.back_to_notes), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

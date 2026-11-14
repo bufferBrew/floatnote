@@ -29,6 +29,10 @@ import kotlin.math.hypot
  *
  * [onLongPress], if given, fires when the finger stays put for the long-press timeout; that
  * touch then neither drags nor taps.
+ *
+ * [onPressChange] reports the finger resting on the control (true from touch-down until it
+ * lifts, starts a drag or becomes a long press), for pressed feedback, since there is no ripple.
+ * A tap also gives a light haptic tick, so a record tap is felt as well as seen.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun Modifier.windowDrag(
@@ -37,6 +41,7 @@ fun Modifier.windowDrag(
     onDragEnd: () -> Unit = {},
     onTap: (() -> Unit)? = null,
     onLongPress: (() -> Unit)? = null,
+    onPressChange: ((Boolean) -> Unit)? = null,
 ): Modifier = composed {
     val config = LocalViewConfiguration.current
     val touchSlop = config.touchSlop
@@ -44,9 +49,11 @@ fun Modifier.windowDrag(
     // Plain object, not state: these change on every move and nothing recomposes on them.
     val track = remember { DragTracker() }
     val currentLongPress by rememberUpdatedState(onLongPress)
+    val currentPressChange by rememberUpdatedState(onPressChange)
     val longPress = remember {
         Runnable {
             track.longPressed = true
+            currentPressChange?.invoke(false)
             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             currentLongPress?.invoke()
         }
@@ -56,6 +63,7 @@ fun Modifier.windowDrag(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 track.down(event.rawX, event.rawY)
+                onPressChange?.invoke(true)
                 if (onLongPress != null) view.postDelayed(longPress, config.longPressTimeoutMillis)
                 true
             }
@@ -65,6 +73,7 @@ fun Modifier.windowDrag(
                 ) {
                     view.removeCallbacks(longPress)
                     track.dragging = true
+                    onPressChange?.invoke(false)
                     onDragStart()
                 }
                 if (track.dragging) {
@@ -74,15 +83,20 @@ fun Modifier.windowDrag(
             }
             MotionEvent.ACTION_UP -> {
                 view.removeCallbacks(longPress)
+                onPressChange?.invoke(false)
                 when {
                     track.longPressed -> Unit
                     track.dragging -> onDragEnd()
-                    else -> onTap?.invoke()
+                    onTap != null -> {
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        onTap()
+                    }
                 }
                 true
             }
             MotionEvent.ACTION_CANCEL -> {
                 view.removeCallbacks(longPress)
+                onPressChange?.invoke(false)
                 if (track.dragging) onDragEnd()
                 true
             }

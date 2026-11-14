@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "perch"
 include(":app")
+include(":baselineprofile")
