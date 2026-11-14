@@ -1,6 +1,7 @@
 package com.bufferbrew.perch.overlay
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -140,8 +141,14 @@ fun OverlayBubble(
         }
     )
     val openLabel = stringResource(R.string.open_floating_note)
+    // No ripple on a window-drag control: it dips while the finger rests on it instead.
+    var pressed by remember { mutableStateOf(false) }
+    val pressScale by animateFloatAsState(if (pressed) Dimens.PressedScale else 1f, Motion.snappy(), label = "press")
     val drag = Modifier
-        .windowDrag(onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap, onLongPress = onOpen)
+        .windowDrag(
+            onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap,
+            onLongPress = onOpen, onPressChange = { pressed = it },
+        )
         .semantics {
             role = Role.Button
             contentDescription = label
@@ -155,7 +162,11 @@ fun OverlayBubble(
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { alpha = opacity }
+            .graphicsLayer {
+                alpha = opacity
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(CircleShape)
             .background(BubbleColors.Fill)
             .border(Dimens.Hairline, BubbleColors.Edge, CircleShape),
@@ -279,8 +290,14 @@ fun OverlayRecordPill(
         VoiceState.Transcribing -> stringResource(R.string.voice_transcribing)
         else -> recordLabel
     }
+    // No ripple on a window-drag control: it dips while the finger rests on it instead.
+    var pressed by remember { mutableStateOf(false) }
+    val pressScale by animateFloatAsState(if (pressed) Dimens.PressedScale else 1f, Motion.snappy(), label = "press")
     val drag = Modifier
-        .windowDrag(onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap, onLongPress = onRestore)
+        .windowDrag(
+            onDragStart = onDragStart, onDrag = onDrag, onDragEnd = onDragEnd, onTap = onTap,
+            onLongPress = onRestore, onPressChange = { pressed = it },
+        )
         .semantics {
             role = Role.Button
             contentDescription = tapLabel
@@ -290,7 +307,11 @@ fun OverlayRecordPill(
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { alpha = opacity }
+            .graphicsLayer {
+                alpha = opacity
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(CircleShape)
             .background(BubbleColors.Fill)
             .border(Dimens.Hairline, BubbleColors.Edge, CircleShape),

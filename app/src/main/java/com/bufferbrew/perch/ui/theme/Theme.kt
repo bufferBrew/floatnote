@@ -193,6 +193,8 @@ object Dimens {
     val ReadingWidth = 720.dp
     /** How far a screen slides as it comes in or goes out. Opacity does most of the work. */
     val ScreenSlide = 32.dp
+    /** How far a pressed bubble or pill dips. */
+    const val PressedScale = 0.94f
     val CornerM = 12.dp
     val CornerL = 24.dp
     val Hairline = 1.dp

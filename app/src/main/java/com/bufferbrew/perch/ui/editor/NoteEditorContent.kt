@@ -1,6 +1,10 @@
 package com.bufferbrew.perch.ui.editor
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -96,6 +100,7 @@ fun NoteEditorContent(
     // Read voice state only where it's drawn: it changes ~12×/s while listening, and reading it
     // here would redraw the whole editor that often.
     val recording by remember(voiceState) { derivedStateOf { voiceState() is VoiceState.Recording } }
+    val haptics = LocalHapticFeedback.current
     val typography = MaterialTheme.typography
     val listState = rememberLazyListState()
     val currentNote by rememberUpdatedState(note)
@@ -165,8 +170,11 @@ fun NoteEditorContent(
                 )
             }
         }
-        AssistStatus(assist, actions, voiceActions::onOpenSettings, Modifier.padding(top = Dimens.SpaceS))
-        VoiceStatus(voiceState, voiceActions, Modifier.padding(top = Dimens.SpaceS), compact)
+        // Grows and shrinks as statuses come and go, so the note above slides instead of jumping.
+        Column(Modifier.fillMaxWidth().animateContentSize(Motion.move())) {
+            AssistStatus(assist, actions, voiceActions::onOpenSettings, Modifier.padding(top = Dimens.SpaceS))
+            VoiceStatus(voiceState, voiceActions, Modifier.padding(top = Dimens.SpaceS), compact)
+        }
         HorizontalDivider(
             modifier = Modifier.padding(top = Dimens.SpaceS),
             color = MaterialTheme.colorScheme.outlineVariant,
@@ -178,7 +186,10 @@ fun NoteEditorContent(
             recording = recording,
             organising = assist == AssistState.Working,
             summarising = assist == AssistState.Summarising,
-            onMic = voiceActions::onMicToggle,
+            onMic = {
+                haptics.performHapticFeedback(if (recording) HapticFeedbackType.Confirm else HapticFeedbackType.ToggleOn)
+                voiceActions.onMicToggle()
+            },
             onShare = onShare,
             canUndo = canUndo,
             canRedo = canRedo,
@@ -234,14 +245,23 @@ private fun BlockRow(
     }
 
     val baseStyle = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge
+    val ticked = (block as? Block.Checklist)?.checked ?: (block as? Block.Task)?.done ?: false
+    // Done tasks ease to secondary ink (about 5:1, not 50% alpha at about 3.5:1): done, but readable.
+    val ink by animateColorAsState(
+        if (block is Block.Task && ticked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+        Motion.fade(Motion.Press),
+        label = "ink",
+    )
     val style = when (block) {
         is Block.Text -> baseStyle
         is Block.Checklist ->
             if (block.checked) baseStyle.copy(textDecoration = TextDecoration.LineThrough) else baseStyle
-        is Block.Task ->
-            // Secondary ink (about 5:1), not 50% alpha (about 3.5:1): done, but still readable.
-            if (block.done) baseStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else baseStyle
+        is Block.Task -> baseStyle.copy(color = ink)
+    }
+    val haptics = LocalHapticFeedback.current
+    val toggle = {
+        haptics.performHapticFeedback(if (ticked) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
+        actions.onToggle(block.id)
     }
 
     // TalkBack reads the checkbox with its item ("Task, buy milk"), not just "checkbox".
@@ -254,9 +274,9 @@ private fun BlockRow(
         when (block) {
             is Block.Text -> Unit
             is Block.Checklist ->
-                Checkbox(block.checked, onCheckedChange = { actions.onToggle(block.id) }, modifier = checkModifier)
+                Checkbox(block.checked, onCheckedChange = { toggle() }, modifier = checkModifier)
             is Block.Task ->
-                Checkbox(block.done, onCheckedChange = { actions.onToggle(block.id) }, modifier = checkModifier)
+                Checkbox(block.done, onCheckedChange = { toggle() }, modifier = checkModifier)
         }
         EditorTextField(
             value = block.text,
