@@ -1,0 +1,4 @@
+<resources>
+    <!-- The Indigo palette's paper (ui/theme/Theme.kt), for the window before Compose draws. -->
+    <color name="window_paper">#FFF7F5FD</color>
+</resources>

@@ -1,4 +1,15 @@
 <resources>
-    <!-- Compose draws everything; this only sets the window before the first frame. -->
-    <style name="Theme.Perch" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Compose draws everything; this only sets the window before the first frame. The window
+         is the app's paper (Indigo palette), so Compose's first frame doesn't change colour. -->
+    <style name="Theme.Perch" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_paper</item>
+    </style>
+
+    <!-- Launch: the icon on the same paper, handed off to Theme.Perch (core-splashscreen, so
+         Android 8-11 get the same splash as 12+). -->
+    <style name="Theme.Perch.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/window_paper</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.Perch</item>
+    </style>
 </resources>
