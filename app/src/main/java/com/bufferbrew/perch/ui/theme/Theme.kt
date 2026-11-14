@@ -188,6 +188,8 @@ object Dimens {
     val SpaceM = 16.dp
     val SpaceL = 20.dp
     val SpaceXl = 32.dp
+    /** Page margin from medium width up (tablets, unfolded foldables); phones use [SpaceM]. */
+    val GutterWide = 24.dp
     val Icon = 24.dp
     val NoteCardWidth = 220.dp
     val ReadingWidth = 720.dp

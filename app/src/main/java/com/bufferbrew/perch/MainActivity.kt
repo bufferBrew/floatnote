@@ -24,6 +24,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -103,6 +106,7 @@ class MainActivity : ComponentActivity() {
         micGranted = it
     }
 
+    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -118,6 +122,13 @@ class MainActivity : ComponentActivity() {
                 AppVoiceActions(this, requestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) })
             }
             val palette by app.palette.collectAsState()
+            // Material 3 margins: 16 dp on phones, 24 dp from medium width up. Columns and the
+            // reading width are worked out from the content's own slot, not from this.
+            val gutter = if (calculateWindowSizeClass(this).widthSizeClass == WindowWidthSizeClass.Compact) {
+                Dimens.SpaceM
+            } else {
+                Dimens.GutterWide
+            }
             PerchTheme(palette) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val note = session.note
@@ -134,7 +145,7 @@ class MainActivity : ComponentActivity() {
                         val contentModifier = Modifier
                             .widthIn(max = Dimens.ReadingWidth)
                             .fillMaxSize()
-                            .padding(horizontal = Dimens.SpaceM)
+                            .padding(horizontal = gutter)
                         when (screen) {
                             AppScreen.Settings -> SettingsContent(
                                 settings = app.voiceSettings,
