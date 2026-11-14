@@ -230,3 +230,8 @@
 - Ceiling (when this breaks): anyone else with the old app installed loses nothing but has to move notes by hand.
 - Upgrade trigger (what to do when it's hit): rename the repo (`gh repo rename perch`, update the remote and the PRIVACY link) and the folder; uninstall the old app once notes are imported.
 - Status: open
+
+## 2026-11-13 — UI and motion refresh
+- Verified on an Android 15 emulator: single- and two-column notes, light and dark appearance, search, Tab and Enter on New note, pinning, History, Dictionary, Settings, 200% text with animations disabled on the notes screen, task editing and recording in the floating panel, size preset changes, and bubble minimise and long-press restore.
+- Compact controls retain 36 dp targets in the floating panel. The app uses a stationary ellipsis during background transcription so the floating window does not need continuous animation frames.
+- Still to verify: TalkBack and Samsung Edge launch on hardware, end-to-end cloud transcription, and frame timing on a representative phone.

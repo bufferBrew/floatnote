@@ -165,6 +165,7 @@ private fun Swatch.toScheme(dark: Boolean): ColorScheme =
 /** Serif for titles, the default sans for everything you type into. */
 private val AppTypography = Typography().let { base ->
     base.copy(
+        headlineLarge = base.headlineLarge.copy(fontFamily = FontFamily.Serif),
         headlineSmall = base.headlineSmall.copy(fontFamily = FontFamily.Serif),
         titleLarge = base.titleLarge.copy(fontFamily = FontFamily.Serif),
         titleMedium = base.titleMedium.copy(fontFamily = FontFamily.Serif),
@@ -186,6 +187,10 @@ object Dimens {
     val SpaceS = 8.dp
     val SpaceM = 16.dp
     val SpaceL = 20.dp
+    val SpaceXl = 32.dp
+    val Icon = 24.dp
+    val NoteCardWidth = 220.dp
+    val ReadingWidth = 720.dp
     val CornerM = 12.dp
     val CornerL = 24.dp
     val Hairline = 1.dp
@@ -205,6 +210,11 @@ object Dimens {
     val WaveBarWidth = 3.dp
     val WaveMaxHeight = 24.dp
     val BubbleWaveMaxHeight = 18.dp
+}
+
+object Motion {
+    const val Quick = 120
+    const val Standard = 200
 }
 
 @Composable

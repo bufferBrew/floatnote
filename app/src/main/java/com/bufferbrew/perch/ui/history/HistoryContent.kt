@@ -5,17 +5,24 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.media.MediaPlayer
 import android.text.format.DateUtils
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,6 +42,7 @@ import com.bufferbrew.perch.R
 import com.bufferbrew.perch.domain.model.Dictation
 import com.bufferbrew.perch.ui.components.PillButton
 import com.bufferbrew.perch.ui.theme.Dimens
+import com.bufferbrew.perch.ui.theme.Motion
 import java.io.File
 
 /**
@@ -70,9 +79,9 @@ fun HistoryContent(
             modifier = Modifier.fillMaxWidth().padding(vertical = if (compact) Dimens.SpaceXs else Dimens.SpaceS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
+            if (!compact) Text(
                 stringResource(R.string.history_title),
-                style = if (compact) typography.titleMedium else typography.titleLarge,
+                style = typography.headlineLarge,
                 modifier = Modifier.weight(1f),
             )
             if (entries.isNotEmpty() && !confirmClear) {
@@ -81,11 +90,11 @@ fun HistoryContent(
         }
         // Inline rather than a dialog: this also runs in the floating panel, which has no Activity.
         if (confirmClear) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceXs)) {
                 Text(
                     stringResource(R.string.history_clear_body),
                     style = typography.bodySmall,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth().padding(top = Dimens.SpaceS),
                 )
                 TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.cancel)) }
                 TextButton(onClick = {
@@ -100,61 +109,73 @@ fun HistoryContent(
             }
             return@Column
         }
-        LazyColumn(Modifier.weight(1f)) {
-            items(entries, key = { it.id }) { entry ->
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(vertical = Dimens.SpaceS),
+            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
+        ) {
+            items(entries, key = { it.id }, contentType = { "dictation" }) { entry ->
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { expanded = if (expanded == entry.id) null else entry.id }
-                        .padding(vertical = Dimens.SpaceS)
-                        .animateItem(),
+                        .animateItem()
+                        .clip(RoundedCornerShape(Dimens.CornerM))
+                        .background(colors.surfaceContainerLow)
+                        .padding(if (compact) Dimens.SpaceS else Dimens.SpaceM),
                     verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
                 ) {
-                    Text(
-                        DateUtils.getRelativeTimeSpanString(entry.createdAt).toString(),
-                        style = typography.labelSmall,
-                        color = colors.onSurfaceVariant,
-                    )
                     val open = expanded == entry.id
-                    Text(
-                        entry.text,
-                        style = if (compact) typography.bodyMedium else typography.bodyLarge,
-                        maxLines = if (open) Int.MAX_VALUE else 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (open) {
-                        entry.raw?.let { raw ->
-                            Text(
-                                stringResource(R.string.history_heard, raw),
-                                style = typography.bodySmall,
-                                color = colors.onSurfaceVariant,
-                            )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
-                            PillButton(stringResource(R.string.history_copy), { context.copy(entry.text) }, dense = true)
-                            PillButton(stringResource(R.string.history_open_note), { onOpenNote(entry.noteId) }, dense = true)
-                            PillButton(stringResource(R.string.delete), { onDelete(entry.id) }, dense = true)
-                        }
-                        if (entry.raw != null && onUseOriginal != null) {
-                            PillButton(stringResource(R.string.history_use_original), { onUseOriginal(entry) }, dense = true)
-                        }
-                        val audio = remember(entry.audio) { audioOf(entry) }
-                        if (audio != null) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
-                                val playing = player.playing == entry.id
-                                PillButton(
-                                    stringResource(if (playing) R.string.history_stop_playing else R.string.history_play),
-                                    { if (playing) player.stop() else player.play(entry.id, audio) },
-                                    dense = true,
+                    Column(
+                        Modifier.fillMaxWidth().clickable { expanded = if (open) null else entry.id },
+                        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
+                    ) {
+                        val date = remember(entry.createdAt) { DateUtils.getRelativeTimeSpanString(entry.createdAt).toString() }
+                        Text(date, style = typography.labelSmall, color = colors.onSurfaceVariant)
+                        Text(
+                            entry.text,
+                            style = if (compact) typography.bodyMedium else typography.bodyLarge,
+                            maxLines = if (open) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = open,
+                        enter = fadeIn(tween(Motion.Quick)),
+                        exit = fadeOut(tween(Motion.Quick)),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs)) {
+                            entry.raw?.let { raw ->
+                                Text(
+                                    stringResource(R.string.history_heard, raw),
+                                    style = typography.bodySmall,
+                                    color = colors.onSurfaceVariant,
                                 )
-                                if (onTranscribeAgain != null) {
-                                    PillButton(stringResource(R.string.history_transcribe_again), { onTranscribeAgain(entry) }, dense = true)
+                            }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceXs)) {
+                                PillButton(stringResource(R.string.history_copy), { context.copy(entry.text) }, dense = compact)
+                                PillButton(stringResource(R.string.history_open_note), { onOpenNote(entry.noteId) }, dense = compact)
+                                PillButton(stringResource(R.string.delete), { onDelete(entry.id) }, dense = compact)
+                            }
+                            if (entry.raw != null && onUseOriginal != null) {
+                                PillButton(stringResource(R.string.history_use_original), { onUseOriginal(entry) }, dense = compact)
+                            }
+                            val audio = remember(entry.audio) { audioOf(entry) }
+                            if (audio != null) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceXs)) {
+                                    val playing = player.playing == entry.id
+                                    PillButton(
+                                        stringResource(if (playing) R.string.history_stop_playing else R.string.history_play),
+                                        { if (playing) player.stop() else player.play(entry.id, audio) },
+                                        dense = compact,
+                                    )
+                                    if (onTranscribeAgain != null) {
+                                        PillButton(stringResource(R.string.history_transcribe_again), { onTranscribeAgain(entry) }, dense = compact)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                HorizontalDivider(color = colors.outlineVariant)
             }
         }
     }

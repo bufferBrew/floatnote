@@ -24,7 +24,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -61,9 +63,11 @@ class NoteViewModel(
     var categoryFilter by mutableStateOf<NoteCategory?>(null)
 
     /** The list screen's notes: everything, or what matches [query] and [categoryFilter]. */
-    @OptIn(ExperimentalCoroutinesApi::class)
+    @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
     val searchResults: Flow<List<NoteSummary>> =
-        snapshotFlow { query to categoryFilter }.flatMapLatest { (q, c) -> repository.observeSummaries(q, c) }
+        snapshotFlow { query.trim() to categoryFilter }
+            .debounce { (query, _) -> if (query.isEmpty()) 0L else SEARCH_DELAY_MS }
+            .flatMapLatest { (query, category) -> repository.observeSummaries(query, category) }
 
     /** The open note, or null when the list should show. */
     var note by mutableStateOf<Note?>(null)
@@ -478,6 +482,7 @@ class NoteViewModel(
     }
 
     private companion object {
+        const val SEARCH_DELAY_MS = 150L
         const val TITLE_KEY = "title"
         const val TYPING_GROUP_MS = 1_500L
         const val UNDO_LIMIT = 100

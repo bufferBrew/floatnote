@@ -13,7 +13,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,6 +29,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -38,6 +41,8 @@ import com.bufferbrew.perch.overlay.OverlayPrefs
 import com.bufferbrew.perch.overlay.OverlayService
 import com.bufferbrew.perch.overlay.openFloatingNote
 import com.bufferbrew.perch.ui.components.PillButton
+import com.bufferbrew.perch.ui.components.pageEnter
+import com.bufferbrew.perch.domain.model.NoteSummary
 import com.bufferbrew.perch.ui.editor.NoteEditorContent
 import com.bufferbrew.perch.ui.editor.shareNote
 import com.bufferbrew.perch.ui.dictionary.DictionaryContent
@@ -116,107 +121,110 @@ class MainActivity : ComponentActivity() {
             }
             val palette by app.palette.collectAsState()
             PerchTheme(palette) {
-                Surface(Modifier.fillMaxSize()) {
-                    val contentModifier = Modifier
-                        .safeDrawingPadding()
-                        .imePadding()
-                        .padding(horizontal = Dimens.SpaceM)
-                    val note = session.note
-                    AutoRecordEffect(note?.id)
-                    when {
-                        showSettings -> {
-                            BackHandler { showSettings = false }
-                            SettingsContent(
-                                settings = app.voiceSettings,
-                                categories = app.categoryContext,
-                                connectionCheck = app.connectionCheck,
-                                recordings = app.recordings,
-                                micGranted = micGranted,
-                                onRequestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) },
-                                openNewNote = openNewNote,
-                                onOpenNewNoteChange = {
-                                    openNewNote = it
-                                    overlayPrefs.openNewNote = it
-                                },
-                                palette = palette,
-                                onPaletteChange = app::setPalette,
-                                onExport = { exportNotes.launch("perch-backup.json") },
-                                onImport = { importNotes.launch(arrayOf("application/json", "text/plain", "*/*")) },
-                                backupMessage = backupMessage,
-                                markdownFolder = markdownFolder,
-                                onChooseMarkdownFolder = { chooseMarkdownFolder.launch(null) },
-                                onStopMarkdown = { setMarkdownFolder(null) },
-                                onBack = {
-                                    showSettings = false
-                                    backupMessage = null
-                                },
-                                modifier = contentModifier,
-                            )
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    Box(Modifier.safeDrawingPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
+                        val note = session.note
+                        val screen = when {
+                            showSettings -> "settings"
+                            note != null -> note.id
+                            showDictionary -> "dictionary"
+                            showHistory -> "history"
+                            else -> "notes"
                         }
-                        showDictionary && note == null -> {
-                            BackHandler { showDictionary = false }
-                            val vocabulary by app.vocabulary.collectAsState()
-                            Column(contentModifier) {
-                                TextButton(onClick = { showDictionary = false }) {
-                                    Text(
-                                        stringResource(R.string.back_to_notes),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                DictionaryContent(
-                                    entries = vocabulary,
-                                    onAdd = { term, replacement ->
-                                        app.persistScope.launch { app.voiceRepository.addVocab(term, replacement) }
+                        val contentModifier = Modifier
+                            .widthIn(max = Dimens.ReadingWidth)
+                            .fillMaxSize()
+                            .padding(horizontal = Dimens.SpaceM)
+                            .pageEnter(screen, forward = screen != "notes")
+                        val stateHolder = rememberSaveableStateHolder()
+                        AutoRecordEffect(note?.id)
+                        when {
+                            showSettings -> {
+                                BackHandler { showSettings = false }
+                                SettingsContent(
+                                    settings = app.voiceSettings,
+                                    categories = app.categoryContext,
+                                    connectionCheck = app.connectionCheck,
+                                    recordings = app.recordings,
+                                    micGranted = micGranted,
+                                    onRequestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) },
+                                    openNewNote = openNewNote,
+                                    onOpenNewNoteChange = {
+                                        openNewNote = it
+                                        overlayPrefs.openNewNote = it
                                     },
-                                    onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteVocab(id) } },
-                                    modifier = Modifier.weight(1f),
+                                    palette = palette,
+                                    onPaletteChange = app::setPalette,
+                                    onExport = { exportNotes.launch("perch-backup.json") },
+                                    onImport = { importNotes.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                                    backupMessage = backupMessage,
+                                    markdownFolder = markdownFolder,
+                                    onChooseMarkdownFolder = { chooseMarkdownFolder.launch(null) },
+                                    onStopMarkdown = { setMarkdownFolder(null) },
+                                    onBack = {
+                                        showSettings = false
+                                        backupMessage = null
+                                    },
+                                    modifier = contentModifier,
                                 )
                             }
-                        }
-                        showHistory && note == null -> {
-                            BackHandler { showHistory = false }
-                            val history by app.voiceRepository.observeHistory().collectAsState(initial = emptyList())
-                            Column(contentModifier) {
-                                TextButton(onClick = { showHistory = false }) {
-                                    Text(
-                                        stringResource(R.string.back_to_notes),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            showDictionary && note == null -> {
+                                BackHandler { showDictionary = false }
+                                val vocabulary by app.vocabulary.collectAsState()
+                                Column(contentModifier) {
+                                    TextButton(onClick = { showDictionary = false }) {
+                                        Text(
+                                            stringResource(R.string.back_to_notes),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    DictionaryContent(
+                                        entries = vocabulary,
+                                        onAdd = { term, replacement ->
+                                            app.persistScope.launch { app.voiceRepository.addVocab(term, replacement) }
+                                        },
+                                        onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteVocab(id) } },
+                                        modifier = Modifier.weight(1f),
                                     )
                                 }
-                                HistoryContent(
-                                    entries = history,
-                                    onOpenNote = {
-                                        showHistory = false
-                                        session.open(it)
-                                    },
-                                    onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteDictation(id) } },
-                                    onClear = { app.persistScope.launch { app.voiceRepository.clearHistory() } },
-                                    onUseOriginal = { session.useOriginal(it.noteId, it.text, it.raw ?: it.text) },
-                                    audioOf = { app.recordings.file(it.audio) },
-                                    onTranscribeAgain = { app.transcribeAgainOrSay(it) },
-                                    modifier = Modifier.weight(1f),
-                                )
                             }
-                        }
-                        note == null -> {
-                            val notes by session.searchResults.collectAsState(initial = emptyList())
-                            Column(contentModifier) {
-                                Row(
-                                    Modifier.padding(top = Dimens.SpaceS),
-                                    horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
-                                ) {
-                                    Spacer(Modifier.weight(1f))
-                                    PillButton(stringResource(R.string.settings), { showSettings = true })
-                                    FloatButton()
+                            showHistory && note == null -> {
+                                BackHandler { showHistory = false }
+                                val history by app.voiceRepository.observeHistory().collectAsState(initial = emptyList())
+                                Column(contentModifier) {
+                                    TextButton(onClick = { showHistory = false }) {
+                                        Text(
+                                            stringResource(R.string.back_to_notes),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    HistoryContent(
+                                        entries = history,
+                                        onOpenNote = {
+                                            showHistory = false
+                                            session.open(it)
+                                        },
+                                        onDelete = { id -> app.persistScope.launch { app.voiceRepository.deleteDictation(id) } },
+                                        onClear = { app.persistScope.launch { app.voiceRepository.clearHistory() } },
+                                        onUseOriginal = { session.useOriginal(it.noteId, it.text, it.raw ?: it.text) },
+                                        audioOf = { app.recordings.file(it.audio) },
+                                        onTranscribeAgain = { app.transcribeAgainOrSay(it) },
+                                        modifier = Modifier.weight(1f),
+                                    )
                                 }
+                            }
+                            note == null -> stateHolder.SaveableStateProvider("notes") {
+                                val notes by session.searchResults.collectAsState(initial = null as List<NoteSummary>?)
                                 NoteListContent(
                                     notes = notes,
                                     onOpen = session::open,
                                     onCreate = session::createNote,
                                     onDelete = session::deleteNote,
-                                    modifier = Modifier.weight(1f),
+                                    modifier = contentModifier,
                                     onHistory = { showHistory = true },
                                     onDictionary = { showDictionary = true },
+                                    onSettings = { showSettings = true },
+                                    onFloat = ::float,
                                     deletedTitle = session.recentlyDeleted?.title,
                                     onUndoDelete = session::undoDelete,
                                     onDeletedDismissed = session::clearDeleted,
@@ -227,32 +235,32 @@ class MainActivity : ComponentActivity() {
                                     onCategoryFilter = { session.categoryFilter = it },
                                 )
                             }
-                        }
-                        else -> {
-                            BackHandler { session.closeNote() }
-                            Column(contentModifier) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(onClick = session::closeNote) {
-                                        Text(
-                                            stringResource(R.string.back_to_notes),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
+                            else -> key(note.id) {
+                                BackHandler { session.closeNote() }
+                                Column(contentModifier) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        TextButton(onClick = session::closeNote) {
+                                            Text(
+                                                stringResource(R.string.back_to_notes),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        Spacer(Modifier.weight(1f))
+                                        FloatButton()
                                     }
-                                    Spacer(Modifier.weight(1f))
-                                    FloatButton()
+                                    NoteEditorContent(
+                                        note = note,
+                                        pendingFocus = session.pendingFocus,
+                                        actions = session,
+                                        voiceState = { app.voice.state },
+                                        voiceActions = voiceActions,
+                                        modifier = Modifier.weight(1f),
+                                        assist = session.assist,
+                                        canUndo = session.canUndo,
+                                        canRedo = session.canRedo,
+                                        onShare = { shareNote(note) },
+                                    )
                                 }
-                                NoteEditorContent(
-                                    note = note,
-                                    pendingFocus = session.pendingFocus,
-                                    actions = session,
-                                    voiceState = { app.voice.state },
-                                    voiceActions = voiceActions,
-                                    modifier = Modifier.weight(1f),
-                                    assist = session.assist,
-                                    canUndo = session.canUndo,
-                                    canRedo = session.canRedo,
-                                    onShare = { shareNote(note) },
-                                )
                             }
                         }
                     }

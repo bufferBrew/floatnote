@@ -1,5 +1,11 @@
 package com.bufferbrew.perch.ui.editor
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -7,6 +13,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -29,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,7 +55,9 @@ import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextDecoration
@@ -59,6 +71,7 @@ import com.bufferbrew.perch.ui.components.CategoryChips
 import com.bufferbrew.perch.domain.model.TaskCompletionMode
 import com.bufferbrew.perch.ui.components.PillButton
 import com.bufferbrew.perch.ui.theme.Dimens
+import com.bufferbrew.perch.ui.theme.Motion
 import com.bufferbrew.perch.voice.VoiceActions
 import com.bufferbrew.perch.voice.VoiceState
 import com.bufferbrew.perch.voice.VoiceStatus
@@ -83,7 +96,7 @@ fun NoteEditorContent(
 ) {
     // Read voice state only where it's drawn: it changes ~12×/s while listening, and reading it
     // here would redraw the whole editor that often.
-    val recording by remember { derivedStateOf { voiceState() is VoiceState.Recording } }
+    val recording by remember(voiceState) { derivedStateOf { voiceState() is VoiceState.Recording } }
     val typography = MaterialTheme.typography
     val listState = rememberLazyListState()
     val currentNote by rememberUpdatedState(note)
@@ -99,6 +112,7 @@ fun NoteEditorContent(
     LaunchedEffect(lastId) {
         if (lastId == seenLastId) return@LaunchedEffect
         seenLastId = lastId
+        if (pendingFocus != null) return@LaunchedEffect
         val info = listState.layoutInfo
         val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
         if (lastVisible >= info.totalItemsCount - 3) listState.animateScrollToItem(currentNote.blocks.size + 1)
@@ -107,50 +121,59 @@ fun NoteEditorContent(
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(bottom = if (compact) Dimens.SpaceS else Dimens.SpaceL),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
         ) {
-            item(key = "title") {
+            item(key = "title", contentType = "title") {
                 EditorTextField(
                     value = note.title,
                     onValueChange = actions::onTitleChange,
                     hint = stringResource(R.string.title_hint),
-                    style = if (compact) typography.titleMedium else typography.headlineSmall,
+                    style = if (compact) typography.titleMedium else typography.headlineLarge,
                     modifier = Modifier.padding(vertical = if (compact) Dimens.SpaceXs else Dimens.SpaceS),
                 )
             }
-            item(key = "category") {
-                CategoryPicker(note.category, actions::onCategoryChange, compact)
+            item(key = "category", contentType = "category") {
+                Column {
+                    CategoryPicker(note.category, actions::onCategoryChange, compact)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
             }
             if (note.blocks.isEmpty()) {
-                item(key = "empty") {
+                item(key = "empty", contentType = "empty") {
                     Text(
                         stringResource(R.string.empty_note_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(min = if (compact) Dimens.CompactTouchTarget else Dimens.TouchTarget)
                             .clickable { actions.onAddBlock(BlockType.Text) }
                             .padding(vertical = Dimens.SpaceM),
                     )
                 }
             }
-            items(note.blocks, key = { it.id }) { block ->
+            items(note.blocks, key = { it.id }, contentType = { it::class }) { block ->
                 BlockRow(
                     block = block,
                     requestFocus = pendingFocus == block.id,
                     actions = actions,
                     compact = compact,
-                    modifier = Modifier.animateItem(),
+                    modifier = Modifier.animateItem(
+                        fadeInSpec = tween(Motion.Quick),
+                        fadeOutSpec = null,
+                    ),
                 )
             }
         }
         AssistStatus(assist, actions, voiceActions::onOpenSettings, Modifier.padding(top = Dimens.SpaceS))
-        VoiceStatus(voiceState, voiceActions, Modifier.padding(top = Dimens.SpaceS))
+        VoiceStatus(voiceState, voiceActions, Modifier.padding(top = Dimens.SpaceS), compact)
         HorizontalDivider(
             modifier = Modifier.padding(top = Dimens.SpaceS),
             color = MaterialTheme.colorScheme.outlineVariant,
         )
         EditorToolbar(
+            noteId = note.id,
             taskMode = note.taskMode,
             actions = actions,
             recording = recording,
@@ -171,7 +194,7 @@ fun NoteEditorContent(
  */
 @Composable
 private fun CategoryPicker(category: NoteCategory?, onChange: (NoteCategory?) -> Unit, compact: Boolean) {
-    var choosing by remember { mutableStateOf(false) }
+    var choosing by rememberSaveable { mutableStateOf(false) }
     if (choosing) {
         CategoryChips(
             selected = category,
@@ -180,17 +203,15 @@ private fun CategoryPicker(category: NoteCategory?, onChange: (NoteCategory?) ->
                 choosing = false
             },
             noneLabel = stringResource(R.string.category_none),
-            dense = true,
+            dense = compact,
         )
     } else {
         val label = category?.let { stringResource(it.labelRes) } ?: stringResource(R.string.category_add)
-        val choose = stringResource(R.string.category_choose)
         Row(Modifier.padding(bottom = if (compact) Dimens.SpaceXs else Dimens.SpaceS)) {
             PillButton(
                 text = label,
                 onClick = { choosing = true },
-                dense = true,
-                modifier = Modifier.semantics { onClick(label = choose) { choosing = true; true } },
+                dense = compact,
             )
         }
     }
@@ -225,12 +246,11 @@ private fun BlockRow(
     }
 
     // TalkBack reads the checkbox with its item ("Task, buy milk"), not just "checkbox".
-    val checkLabel = when (block) {
-        is Block.Text -> ""
-        is Block.Checklist -> stringResource(R.string.checklist_item)
-        is Block.Task -> stringResource(R.string.task_item)
-    }.let { kind -> if (block.text.isBlank()) kind else stringResource(R.string.checkbox_label, kind, block.text) }
-    val checkModifier = Modifier.semantics { contentDescription = checkLabel }
+    val checkModifier = if (block is Block.Text) Modifier else {
+        val kind = stringResource(if (block is Block.Checklist) R.string.checklist_item else R.string.task_item)
+        val label = if (block.text.isBlank()) kind else stringResource(R.string.checkbox_label, kind, block.text)
+        Modifier.semantics { contentDescription = label }
+    }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         when (block) {
             is Block.Text -> Unit
@@ -288,7 +308,7 @@ private fun EditorTextField(
         onValueChange = onValueChange,
         textStyle = style.copy(color = color),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-        modifier = modifier,
+        modifier = modifier.semantics { contentDescription = hint },
         decorationBox = { inner ->
             Box {
                 if (value.isEmpty()) {
@@ -302,6 +322,7 @@ private fun EditorTextField(
 
 @Composable
 private fun EditorToolbar(
+    noteId: String,
     taskMode: TaskCompletionMode,
     actions: NoteEditorActions,
     recording: Boolean,
@@ -313,52 +334,104 @@ private fun EditorToolbar(
     canRedo: Boolean,
     dense: Boolean,
 ) {
-    // Scrolls sideways so it fits a narrow floating window.
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(vertical = if (dense) Dimens.SpaceXs else Dimens.SpaceS),
-        horizontalArrangement = Arrangement.spacedBy(if (dense) Dimens.SpaceXs else Dimens.SpaceS),
-        verticalAlignment = Alignment.CenterVertically,
+    var showTools by rememberSaveable(noteId) { mutableStateOf(false) }
+    val busy = organising || summarising
+    val gap = if (dense) Dimens.SpaceXs else Dimens.SpaceS
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = gap),
+        verticalArrangement = Arrangement.spacedBy(gap),
     ) {
-        PillButton(
-            text = stringResource(if (recording) R.string.voice_stop else R.string.voice_record),
-            onClick = onMic,
-            selected = recording,
-            dense = dense,
-        )
-        // Next to Record, so it's visible without scrolling the toolbar in the floating window.
-        PillButton(
-            text = stringResource(if (organising) R.string.ai_organising else R.string.ai_organise),
-            onClick = actions::onOrganise,
-            dense = dense,
-        )
-        PillButton(
-            text = stringResource(if (summarising) R.string.ai_summarising else R.string.ai_summarise),
-            onClick = actions::onSummarise,
-            dense = dense,
-        )
-        if (canUndo) PillButton(stringResource(R.string.edit_undo), actions::onUndo, dense = dense)
-        if (canRedo) PillButton(stringResource(R.string.edit_redo), actions::onRedo, dense = dense)
-        PillButton(stringResource(R.string.block_text), { actions.onChangeType(BlockType.Text) }, dense = dense)
-        PillButton(stringResource(R.string.block_checklist), { actions.onChangeType(BlockType.Checklist) }, dense = dense)
-        PillButton(stringResource(R.string.block_task), { actions.onChangeType(BlockType.Task) }, dense = dense)
-        PillButton(
-            text = stringResource(
-                if (taskMode == TaskCompletionMode.MoveToBottom) R.string.mode_move_to_bottom
-                else R.string.mode_keep_in_place
-            ),
-            onClick = {
-                actions.onTaskModeChange(
-                    if (taskMode == TaskCompletionMode.MoveToBottom) TaskCompletionMode.KeepInPlace
-                    else TaskCompletionMode.MoveToBottom
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PillButton(
+                text = stringResource(if (recording) R.string.voice_stop else R.string.voice_record),
+                onClick = onMic,
+                selected = true,
+                dense = dense,
+            )
+            val toolsState = stringResource(if (showTools) R.string.tools_expanded else R.string.tools_collapsed)
+            PillButton(
+                text = stringResource(R.string.editor_tools),
+                onClick = { showTools = !showTools },
+                modifier = Modifier.semantics { stateDescription = toolsState },
+                selected = showTools,
+                dense = dense,
+            )
+            if (!dense) {
+                PillButton(stringResource(R.string.edit_undo), actions::onUndo, enabled = canUndo)
+                PillButton(stringResource(R.string.edit_redo), actions::onRedo, enabled = canRedo)
+            }
+        }
+        AnimatedVisibility(
+            visible = showTools,
+            enter = fadeIn(tween(Motion.Quick)) + expandVertically(tween(Motion.Standard), expandFrom = Alignment.Top),
+            exit = fadeOut(tween(Motion.Quick)) + shrinkVertically(tween(Motion.Standard), shrinkTowards = Alignment.Top),
+        ) {
+            val tools: @Composable () -> Unit = {
+                BlockType.entries.forEach { type ->
+                    PillButton(
+                        text = stringResource(
+                            when (type) {
+                                BlockType.Text -> R.string.block_text
+                                BlockType.Checklist -> R.string.block_checklist
+                                BlockType.Task -> R.string.block_task
+                            },
+                        ),
+                        onClick = {
+                            actions.onChangeType(type)
+                            if (dense) showTools = false
+                        },
+                        dense = dense,
+                    )
+                }
+                PillButton(
+                    text = stringResource(if (organising) R.string.ai_organising else R.string.ai_organise),
+                    onClick = actions::onOrganise,
+                    dense = dense,
+                    enabled = !busy,
                 )
-            },
-            selected = taskMode == TaskCompletionMode.MoveToBottom,
-            dense = dense,
-        )
-        if (onShare != null) PillButton(stringResource(R.string.share_note), onShare, dense = dense)
+                PillButton(
+                    text = stringResource(if (summarising) R.string.ai_summarising else R.string.ai_summarise),
+                    onClick = actions::onSummarise,
+                    dense = dense,
+                    enabled = !busy,
+                )
+                if (dense) {
+                    PillButton(stringResource(R.string.edit_undo), actions::onUndo, dense = true, enabled = canUndo)
+                    PillButton(stringResource(R.string.edit_redo), actions::onRedo, dense = true, enabled = canRedo)
+                }
+                PillButton(
+                    text = stringResource(
+                        if (taskMode == TaskCompletionMode.MoveToBottom) R.string.mode_move_to_bottom
+                        else R.string.mode_keep_in_place
+                    ),
+                    onClick = {
+                        actions.onTaskModeChange(
+                            if (taskMode == TaskCompletionMode.MoveToBottom) TaskCompletionMode.KeepInPlace
+                            else TaskCompletionMode.MoveToBottom
+                        )
+                    },
+                    selected = taskMode == TaskCompletionMode.MoveToBottom,
+                    dense = dense,
+                )
+                if (onShare != null) PillButton(stringResource(R.string.share_note), onShare, dense = dense)
+            }
+            if (dense) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                ) { tools() }
+            } else {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                    verticalArrangement = Arrangement.spacedBy(gap),
+                ) { tools() }
+            }
+        }
     }
 }
 
@@ -372,13 +445,14 @@ private fun AssistStatus(
 ) {
     if (assist == AssistState.Idle) return
     val colors = MaterialTheme.colorScheme
-    Row(
+    FlowRow(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Dimens.CornerM))
             .background(colors.surfaceVariant)
-            .padding(start = Dimens.SpaceM, end = Dimens.SpaceXs),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = Dimens.SpaceS)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
     ) {
         val message = when (assist) {
             AssistState.Working -> stringResource(R.string.ai_organising)
@@ -392,7 +466,7 @@ private fun AssistStatus(
             message,
             style = MaterialTheme.typography.bodySmall,
             color = colors.onSurfaceVariant,
-            modifier = Modifier.weight(1f).padding(vertical = Dimens.SpaceS),
+            modifier = Modifier.align(Alignment.CenterVertically).padding(Dimens.SpaceS),
         )
         if (assist is AssistState.Error && assist.needsSettings) {
             TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.settings)) }

@@ -9,12 +9,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -22,7 +22,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -138,8 +141,22 @@ fun AutoRecordEffect(noteId: String?) {
  * transcribing, and errors with what to do next. Nothing when idle.
  */
 @Composable
-fun VoiceStatus(voiceState: () -> VoiceState, actions: VoiceActions, modifier: Modifier = Modifier) {
-    val state = voiceState()
+fun VoiceStatus(
+    voiceState: () -> VoiceState,
+    actions: VoiceActions,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
+    // The Canvas observes audio samples. Layout only observes visible status and whole seconds.
+    val state by remember(voiceState) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            when (val current = voiceState()) {
+                is VoiceState.Recording ->
+                    current.copy(levels = emptyList(), elapsedMs = current.elapsedMs / 1000 * 1000)
+                else -> current
+            }
+        }
+    }
     if (state == VoiceState.Idle) return
     val colors = MaterialTheme.colorScheme
     Column(
@@ -149,45 +166,41 @@ fun VoiceStatus(voiceState: () -> VoiceState, actions: VoiceActions, modifier: M
             .background(colors.surfaceVariant)
             .padding(horizontal = Dimens.SpaceM, vertical = Dimens.SpaceS),
     ) {
-        when (state) {
+        when (val current = state) {
             is VoiceState.Recording -> {
-                // Like Wispr Flow: ✕ throws the recording away, ✓ stops and adds it to the note.
+                Text(
+                    stringResource(
+                        when {
+                            current.paused -> R.string.voice_paused
+                            current.fallback -> R.string.voice_listening_phone
+                            else -> R.string.voice_listening
+                        },
+                        remember(current.elapsedMs) { formatElapsed(current.elapsedMs) },
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircleButton("✕", stringResource(R.string.voice_discard), actions::onCancel, dense = true)
+                    CircleButton("✕", stringResource(R.string.voice_discard), actions::onCancel, dense = compact)
                     Waveform(
-                        levels = state.levels,
-                        color = colors.onSurface,
+                        levelAt = { index -> (voiceState() as? VoiceState.Recording)?.levels.sampleAt(index) },
+                        color = colors.primary,
                         maxHeight = Dimens.WaveMaxHeight,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).padding(horizontal = Dimens.SpaceXs),
                     )
-                    Text(
-                        stringResource(
-                            when {
-                                state.paused -> R.string.voice_paused
-                                state.fallback -> R.string.voice_listening_phone
-                                else -> R.string.voice_listening
-                            },
-                            formatElapsed(state.elapsedMs),
-                        ),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.onSurfaceVariant,
-                        modifier = Modifier.padding(start = Dimens.SpaceS),
-                    )
-                    // Whisper clips only: the device recognizer can't pause mid-dictation.
-                    if (state.canPause) {
+                    if (current.canPause) {
                         CircleButton(
-                            if (state.paused) "▶" else "❚❚",
-                            stringResource(if (state.paused) R.string.voice_resume else R.string.voice_pause),
+                            if (current.paused) "▶" else "❚❚",
+                            stringResource(if (current.paused) R.string.voice_resume else R.string.voice_pause),
                             actions::onPauseToggle,
-                            dense = true,
+                            dense = compact,
                         )
                     }
-                    CircleButton("✓", stringResource(R.string.voice_done), actions::onMicToggle, dense = true)
+                    CircleButton("✓", stringResource(R.string.voice_done), actions::onMicToggle, dense = compact)
                 }
-                // Device engine: the sentence being heard, before it lands in the note.
-                if (state.partial.isNotBlank()) {
+                if (current.partial.isNotBlank()) {
                     Text(
-                        state.partial,
+                        current.partial,
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.onSurfaceVariant,
                         maxLines = 2,
@@ -211,15 +224,15 @@ fun VoiceStatus(voiceState: () -> VoiceState, actions: VoiceActions, modifier: M
             }
             is VoiceState.Error -> {
                 Text(
-                    state.message,
+                    current.message,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
                 )
-                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    if (state.needsSettings) {
+                FlowRow(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    if (current.needsSettings) {
                         TextButton(onClick = actions::onOpenSettings) { Text(stringResource(R.string.settings)) }
                     }
-                    if (state.canRetry) {
+                    if (current.canRetry) {
                         TextButton(onClick = actions::onRetry) { Text(stringResource(R.string.voice_retry)) }
                     }
                     TextButton(onClick = actions::onDismiss) { Text(stringResource(R.string.voice_dismiss)) }
@@ -240,7 +253,7 @@ fun VoiceStatus(voiceState: () -> VoiceState, actions: VoiceActions, modifier: M
  */
 @Composable
 fun Waveform(
-    levels: List<Float>,
+    levelAt: (Int) -> Float,
     color: Color,
     maxHeight: Dp,
     modifier: Modifier = Modifier,
@@ -254,21 +267,25 @@ fun Waveform(
             .height(maxHeight)
             .semantics { contentDescription = label },
     ) {
-        val w = barWidth.toPx()
-        val minH = w
-        val padded = List((bars - levels.size).coerceAtLeast(0)) { 0f } + levels.takeLast(bars)
-        padded.forEachIndexed { i, level ->
+        val w = minOf(barWidth.toPx(), size.width / (2 * bars - 1), size.height)
+        val start = (size.width - (2 * bars - 1) * w) / 2
+        for (i in 0 until bars) {
+            val level = levelAt(i)
             // Speech amplitudes are mostly small; a square root lifts quiet talking into view.
-            val h = minH + (size.height - minH) * sqrt(level.coerceIn(0f, 1f))
+            val h = w + (size.height - w) * sqrt(level.coerceIn(0f, 1f))
             drawRoundRect(
                 color = color,
-                topLeft = Offset(i * 2 * w, (size.height - h) / 2),
+                topLeft = Offset(start + i * 2 * w, (size.height - h) / 2),
                 size = Size(w, h),
                 cornerRadius = CornerRadius(w / 2, w / 2),
             )
         }
     }
 }
+
+/** An index into a right-aligned window of recent samples. */
+internal fun List<Float>?.sampleAt(index: Int, bars: Int = VoiceController.MAX_LEVELS): Float =
+    this?.getOrNull(size - bars + index) ?: 0f
 
 /** m:ss, for the recording time. */
 fun formatElapsed(ms: Long): String {

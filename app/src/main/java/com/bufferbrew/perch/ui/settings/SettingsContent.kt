@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -18,6 +20,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,11 +49,14 @@ import com.bufferbrew.perch.net.CheckLine
 import com.bufferbrew.perch.net.ConnectionCheck
 import com.bufferbrew.perch.ui.components.AppSwitch
 import com.bufferbrew.perch.ui.components.PillButton
+import com.bufferbrew.perch.ui.components.pageEnter
 import com.bufferbrew.perch.ui.theme.AppPalette
 import com.bufferbrew.perch.ui.theme.Dimens
 import com.bufferbrew.perch.voice.VoiceEngine
 import com.bufferbrew.perch.voice.VoiceSettings
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** The Settings pages. Dictionary and History are pages of their own beside the notes. */
 enum class SettingsPage { Voice, Api, Ai, Floating, Appearance, Backup }
@@ -91,32 +98,37 @@ fun SettingsContent(
     // Registered after the host's handler, so Back leaves the page before it leaves Settings.
     BackHandler(enabled = page != null) { page = null }
 
-    Column(
-        modifier = modifier.verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceM),
-    ) {
-        val current = page
-        TextButton(onClick = { if (current == null) onBack() else page = null }) {
-            Text(
-                stringResource(if (current == null) R.string.back_to_notes else R.string.back_to_settings),
-                color = colors.onSurfaceVariant,
-            )
-        }
-        when (current) {
-            null -> SettingsMenu(onOpen = { page = it })
-            SettingsPage.Voice -> VoicePage(settings, recordings, micGranted, onRequestMic)
-            SettingsPage.Api -> ApiPage(settings, connectionCheck)
-            SettingsPage.Ai -> AiPage(settings, categories, connectionCheck)
-            SettingsPage.Floating -> FloatingPage(openNewNote, onOpenNewNoteChange)
-            SettingsPage.Appearance -> AppearancePage(palette, onPaletteChange)
-            SettingsPage.Backup -> BackupPage(onExport, onImport, backupMessage, markdownFolder, onChooseMarkdownFolder, onStopMarkdown)
+    val current = page
+    key(current) {
+        Column(
+            modifier = modifier.fillMaxSize()
+                .pageEnter(current ?: "menu", forward = current != null)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = Dimens.SpaceM),
+            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceM),
+        ) {
+            TextButton(onClick = { if (current == null) onBack() else page = null }) {
+                Text(
+                    stringResource(if (current == null) R.string.back_to_notes else R.string.back_to_settings),
+                    color = colors.onSurfaceVariant,
+                )
+            }
+            when (current) {
+                null -> SettingsMenu(onOpen = { page = it })
+                SettingsPage.Voice -> VoicePage(settings, recordings, micGranted, onRequestMic)
+                SettingsPage.Api -> ApiPage(settings, connectionCheck)
+                SettingsPage.Ai -> AiPage(settings, categories, connectionCheck)
+                SettingsPage.Floating -> FloatingPage(openNewNote, onOpenNewNoteChange)
+                SettingsPage.Appearance -> AppearancePage(palette, onPaletteChange)
+                SettingsPage.Backup -> BackupPage(onExport, onImport, backupMessage, markdownFolder, onChooseMarkdownFolder, onStopMarkdown)
+            }
         }
     }
 }
 
 @Composable
 private fun SettingsMenu(onOpen: (SettingsPage) -> Unit) {
-    Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineSmall)
+    Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineLarge)
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
         SettingsPage.entries.forEach { target ->
             val (title, help) = when (target) {
@@ -131,7 +143,7 @@ private fun SettingsMenu(onOpen: (SettingsPage) -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(Dimens.CornerL))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
                     .clickable { onOpen(target) }
                     .padding(Dimens.SpaceM),
                 verticalAlignment = Alignment.CenterVertically,
@@ -154,16 +166,24 @@ private fun SettingsMenu(onOpen: (SettingsPage) -> Unit) {
 private fun VoicePage(settings: VoiceSettings, recordings: RecordingStore, micGranted: Boolean, onRequestMic: () -> Unit) {
     var autoRecord by remember { mutableStateOf(settings.autoRecord) }
     var keepRecordings by remember { mutableStateOf(settings.keepRecordings) }
-    var recordingsBytes by remember { mutableStateOf(recordings.size()) }
+    var recordingsBytes by remember { mutableStateOf(0L) }
+    var clearingRecordings by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(recordings) {
+        recordingsBytes = withContext(Dispatchers.IO) { recordings.size() }
+    }
     var engine by remember { mutableStateOf(settings.engine) }
     var model by remember { mutableStateOf(settings.model) }
     var language by remember { mutableStateOf(settings.language) }
     val colors = MaterialTheme.colorScheme
 
-    Text(stringResource(R.string.settings_page_voice), style = MaterialTheme.typography.headlineSmall)
+    Text(stringResource(R.string.settings_page_voice), style = MaterialTheme.typography.headlineLarge)
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
         Text(stringResource(R.string.settings_engine))
-        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
+            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
+        ) {
             VoiceEngine.entries.forEach { option ->
                 PillButton(
                     text = stringResource(
@@ -245,9 +265,16 @@ private fun VoicePage(settings: VoiceSettings, recordings: RecordingStore, micGr
         PillButton(
             stringResource(R.string.settings_delete_recordings, recordingsBytes / (1024 * 1024)),
             {
-                recordings.clear()
-                recordingsBytes = 0
+                clearingRecordings = true
+                scope.launch {
+                    recordingsBytes = withContext(Dispatchers.IO) {
+                        recordings.clear()
+                        recordings.size()
+                    }
+                    clearingRecordings = false
+                }
             },
+            enabled = !clearingRecordings,
         )
     }
 }
@@ -261,7 +288,7 @@ private fun ApiPage(settings: VoiceSettings, check: ConnectionCheck) {
     var hostConfirmed by remember { mutableIntStateOf(0) }
     val colors = MaterialTheme.colorScheme
 
-    Text(stringResource(R.string.settings_page_api), style = MaterialTheme.typography.headlineSmall)
+    Text(stringResource(R.string.settings_page_api), style = MaterialTheme.typography.headlineLarge)
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
         OutlinedTextField(
             value = keyDraft,
@@ -284,7 +311,10 @@ private fun ApiPage(settings: VoiceSettings, check: ConnectionCheck) {
             style = MaterialTheme.typography.bodySmall,
             color = if (keyBad) colors.error else colors.onSurfaceVariant,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
+            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
+        ) {
             PillButton(
                 text = stringResource(R.string.settings_save_key),
                 onClick = {
@@ -297,7 +327,8 @@ private fun ApiPage(settings: VoiceSettings, check: ConnectionCheck) {
                         }
                     }
                 },
-                selected = keyDraft.isNotBlank(),
+                selected = true,
+                enabled = keyDraft.isNotBlank(),
             )
             if (hasKey) {
                 PillButton(
@@ -415,7 +446,7 @@ private fun AiPage(settings: VoiceSettings, categories: CategoryContext, check: 
     var aiModel by remember { mutableStateOf(settings.aiModel) }
     val hasKey = remember { settings.hasApiKey }
 
-    Text(stringResource(R.string.settings_ai), style = MaterialTheme.typography.headlineSmall)
+    Text(stringResource(R.string.settings_ai), style = MaterialTheme.typography.headlineLarge)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(stringResource(R.string.settings_ai_cleanup))
@@ -494,7 +525,7 @@ private fun CategoryContextField(category: NoteCategory, categories: CategoryCon
 
 @Composable
 private fun FloatingPage(openNewNote: Boolean, onOpenNewNoteChange: (Boolean) -> Unit) {
-    Text(stringResource(R.string.settings_page_floating), style = MaterialTheme.typography.headlineSmall)
+    Text(stringResource(R.string.settings_page_floating), style = MaterialTheme.typography.headlineLarge)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(stringResource(R.string.settings_float_new_note))
@@ -510,7 +541,7 @@ private fun FloatingPage(openNewNote: Boolean, onOpenNewNoteChange: (Boolean) ->
 
 @Composable
 private fun AppearancePage(palette: AppPalette, onPaletteChange: (AppPalette) -> Unit) {
-    Text(stringResource(R.string.settings_page_appearance), style = MaterialTheme.typography.headlineSmall)
+    Text(stringResource(R.string.settings_page_appearance), style = MaterialTheme.typography.headlineLarge)
     Text(
         stringResource(R.string.settings_appearance_help),
         style = MaterialTheme.typography.bodySmall,
@@ -543,13 +574,16 @@ private fun BackupPage(
     onChooseMarkdownFolder: () -> Unit,
     onStopMarkdown: () -> Unit,
 ) {
-    Text(stringResource(R.string.settings_page_backup), style = MaterialTheme.typography.headlineSmall)
+    Text(stringResource(R.string.settings_page_backup), style = MaterialTheme.typography.headlineLarge)
     Text(
         stringResource(R.string.backup_help),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
+        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
+    ) {
         PillButton(stringResource(R.string.backup_export), onExport, selected = true)
         PillButton(stringResource(R.string.backup_import), onImport)
     }
@@ -566,7 +600,10 @@ private fun BackupPage(
     if (markdownFolder != null) {
         Text(stringResource(R.string.markdown_saving_to, markdownFolder), style = MaterialTheme.typography.bodyMedium)
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceS),
+        verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs),
+    ) {
         PillButton(
             stringResource(if (markdownFolder == null) R.string.markdown_choose else R.string.markdown_change),
             onChooseMarkdownFolder,

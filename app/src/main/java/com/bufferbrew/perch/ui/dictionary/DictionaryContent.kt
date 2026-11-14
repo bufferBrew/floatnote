@@ -1,14 +1,15 @@
 package com.bufferbrew.perch.ui.dictionary
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -51,50 +52,67 @@ fun DictionaryContent(
         }
     }
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
-        Text(
-            stringResource(R.string.vocab_title),
-            style = if (compact) typography.titleMedium else typography.titleLarge,
-            modifier = Modifier.padding(top = if (compact) Dimens.SpaceXs else Dimens.SpaceS),
-        )
-        if (!compact) {
-            Text(stringResource(R.string.vocab_help), style = typography.bodySmall, color = colors.onSurfaceVariant)
-        }
-        OutlinedTextField(
-            value = term,
-            onValueChange = { term = it },
-            label = { Text(stringResource(R.string.vocab_word)) },
-            singleLine = true,
-            textStyle = if (compact) typography.bodyMedium else typography.bodyLarge,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = replacement,
-            onValueChange = { replacement = it },
-            label = { Text(stringResource(R.string.vocab_replacement)) },
-            singleLine = true,
-            textStyle = if (compact) typography.bodyMedium else typography.bodyLarge,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        PillButton(stringResource(R.string.vocab_add), add, selected = term.isNotBlank(), dense = compact)
-        if (entries.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.vocab_empty), color = colors.onSurfaceVariant)
+    val gap = if (compact) Dimens.SpaceS else Dimens.SpaceM
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(vertical = gap),
+        verticalArrangement = Arrangement.spacedBy(gap),
+    ) {
+        item(key = "form", contentType = "form") {
+            Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
+                if (!compact) Text(
+                    stringResource(R.string.vocab_title),
+                    style = typography.headlineLarge,
+                    modifier = Modifier.padding(top = Dimens.SpaceS),
+                )
+                if (!compact) {
+                    Text(stringResource(R.string.vocab_help), style = typography.bodySmall, color = colors.onSurfaceVariant)
+                }
+                OutlinedTextField(
+                    value = term,
+                    onValueChange = { term = it },
+                    label = { Text(stringResource(R.string.vocab_word)) },
+                    singleLine = true,
+                    textStyle = if (compact) typography.bodyMedium else typography.bodyLarge,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = replacement,
+                    onValueChange = { replacement = it },
+                    label = { Text(stringResource(R.string.vocab_replacement)) },
+                    singleLine = true,
+                    textStyle = if (compact) typography.bodyMedium else typography.bodyLarge,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                PillButton(
+                    stringResource(R.string.vocab_add), add, selected = true, dense = compact, enabled = term.isNotBlank(),
+                )
             }
-        } else {
-            LazyColumn(Modifier.weight(1f)) {
-                items(entries, key = { it.id }) { entry ->
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.animateItem()) {
-                        Text(
-                            if (entry.replacement.isBlank()) entry.term else "${entry.term} → ${entry.replacement}",
-                            style = if (compact) typography.bodyMedium else typography.bodyLarge,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        TextButton(onClick = { onDelete(entry.id) }) { Text(stringResource(R.string.delete)) }
-                    }
-                    HorizontalDivider(color = colors.outlineVariant)
+        }
+        if (entries.isEmpty()) {
+            item(key = "empty", contentType = "empty") {
+                Text(
+                    stringResource(R.string.vocab_empty),
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = gap),
+                )
+            }
+        }
+        items(entries, key = { it.id }, contentType = { "entry" }) { entry ->
+            Surface(
+                modifier = Modifier.animateItem(),
+                shape = RoundedCornerShape(Dimens.CornerM),
+                color = colors.surfaceContainerLow,
+            ) {
+                Row(Modifier.padding(start = gap, end = Dimens.SpaceXs), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (entry.replacement.isBlank()) entry.term else "${entry.term} → ${entry.replacement}",
+                        style = if (compact) typography.bodyMedium else typography.bodyLarge,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { onDelete(entry.id) }) { Text(stringResource(R.string.delete)) }
                 }
             }
         }
