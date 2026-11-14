@@ -2,7 +2,6 @@ package com.bufferbrew.perch.ui.list
 
 import android.text.format.DateUtils
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
@@ -184,8 +183,8 @@ fun NoteListContent(
                         actionsFor = null
                     },
                     modifier = Modifier.animateItem(
-                        fadeInSpec = tween(Motion.Quick),
-                        fadeOutSpec = tween(Motion.Quick),
+                        fadeInSpec = Motion.fade(),
+                        fadeOutSpec = Motion.fade(),
                     ),
                 )
             }
@@ -311,8 +310,8 @@ private fun NoteCard(
         }
         AnimatedVisibility(
             visible = showActions,
-            enter = fadeIn(tween(Motion.Quick)),
-            exit = fadeOut(tween(Motion.Quick)),
+            enter = fadeIn(Motion.fade()),
+            exit = fadeOut(Motion.fade()),
         ) {
             Row(
                 Modifier.horizontalScroll(rememberScrollState()).padding(Dimens.SpaceS),

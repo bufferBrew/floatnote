@@ -1,7 +1,6 @@
 package com.bufferbrew.perch.overlay
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -436,8 +435,8 @@ fun OverlayPanel(
                     )
                     AnimatedVisibility(
                         visible = showAdjust,
-                        enter = fadeIn(tween(Motion.Quick)),
-                        exit = fadeOut(tween(Motion.Quick)),
+                        enter = fadeIn(Motion.fade()),
+                        exit = fadeOut(Motion.fade()),
                     ) {
                         Column(
                             Modifier.padding(horizontal = Dimens.SpaceXs, vertical = Dimens.SpaceXs),

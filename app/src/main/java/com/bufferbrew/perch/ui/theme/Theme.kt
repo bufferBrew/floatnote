@@ -212,11 +212,6 @@ object Dimens {
     val BubbleWaveMaxHeight = 18.dp
 }
 
-object Motion {
-    const val Quick = 120
-    const val Standard = 200
-}
-
 @Composable
 fun PerchTheme(
     palette: AppPalette = AppPalette.Indigo,

@@ -1,7 +1,6 @@
 package com.bufferbrew.perch.ui.components
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -115,7 +114,7 @@ fun CircleButton(
 fun Modifier.pageEnter(page: Any, forward: Boolean = true): Modifier {
     val progress = remember(page) { Animatable(0f) }
     val distance = with(LocalDensity.current) { Dimens.SpaceS.toPx() } * if (forward) 1f else -1f
-    LaunchedEffect(progress) { progress.animateTo(1f, tween(Motion.Standard)) }
+    LaunchedEffect(progress) { progress.animateTo(1f, Motion.enter()) }
     return graphicsLayer {
         alpha = progress.value
         translationY = distance * (1f - progress.value)

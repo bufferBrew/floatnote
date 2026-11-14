@@ -1,7 +1,6 @@
 package com.bufferbrew.perch.ui.editor
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -160,7 +159,7 @@ fun NoteEditorContent(
                     actions = actions,
                     compact = compact,
                     modifier = Modifier.animateItem(
-                        fadeInSpec = tween(Motion.Quick),
+                        fadeInSpec = Motion.fade(),
                         fadeOutSpec = null,
                     ),
                 )
@@ -367,8 +366,8 @@ private fun EditorToolbar(
         }
         AnimatedVisibility(
             visible = showTools,
-            enter = fadeIn(tween(Motion.Quick)) + expandVertically(tween(Motion.Standard), expandFrom = Alignment.Top),
-            exit = fadeOut(tween(Motion.Quick)) + shrinkVertically(tween(Motion.Standard), shrinkTowards = Alignment.Top),
+            enter = fadeIn(Motion.fade()) + expandVertically(Motion.move(), expandFrom = Alignment.Top),
+            exit = fadeOut(Motion.fade()) + shrinkVertically(Motion.move(), shrinkTowards = Alignment.Top),
         ) {
             val tools: @Composable () -> Unit = {
                 BlockType.entries.forEach { type ->

@@ -13,7 +13,6 @@ import android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 import android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -34,6 +33,7 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.bufferbrew.perch.PerchApp
 import com.bufferbrew.perch.ui.editor.NoteViewModel
+import com.bufferbrew.perch.ui.theme.Motion
 import com.bufferbrew.perch.ui.theme.PerchTheme
 import com.bufferbrew.perch.ui.theme.NotePaper
 import com.bufferbrew.perch.voice.AppVoiceActions
@@ -207,7 +207,7 @@ class OverlayWindow(
                     val inUse = LocalWindowInfo.current.isWindowFocused && !previewingOpacity
                     val shownOpacity by animateFloatAsState(
                         targetValue = if (inUse) 1f else opacity,
-                        animationSpec = if (previewingOpacity) snap() else tween(PANEL_FADE_MS),
+                        animationSpec = if (previewingOpacity) snap() else Motion.fade(Motion.Standard),
                         label = "panelOpacity",
                     )
                     if (compact) {
@@ -429,7 +429,6 @@ class OverlayWindow(
         val DEFAULT_SIZE = PanelSize.Small
         const val MAX_PRESET_SCALE = 1.5f
         /** How long the panel takes to fade to or from the chosen opacity as focus changes. */
-        const val PANEL_FADE_MS = 200
         /** Below either of these the panel turns into the record pill. */
         const val FULL_MIN_WIDTH_DP = 180
         const val FULL_MIN_HEIGHT_DP = 160
