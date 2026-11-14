@@ -6,6 +6,8 @@ import android.os.Build
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.widget.FrameLayout
+import android.window.BackEvent
+import android.window.OnBackAnimationCallback
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 
@@ -18,6 +20,8 @@ import android.window.OnBackInvokedDispatcher
  * - Back minimises instead of being swallowed. On Android 13+ that's an [OnBackInvokedCallback]:
  *   with targetSdk 36+ (predictive back) the system no longer sends KEYCODE_BACK to windows.
  *   Back only reaches the focused window, so it never fires for the (unfocusable) bubble.
+ *   On Android 14+ it is an [OnBackAnimationCallback], so the panel can follow the swipe
+ *   ([onBackProgress], 0 to 1) and settle back if it's cancelled ([onBackCancel]).
  */
 @SuppressLint("ViewConstructor")
 class OverlayRootView(
@@ -25,6 +29,8 @@ class OverlayRootView(
     private val onOutsideTouch: () -> Unit,
     private val onInsideTouch: () -> Unit,
     private val onBack: () -> Unit,
+    private val onBackProgress: (Float) -> Unit = {},
+    private val onBackCancel: () -> Unit = {},
 ) : FrameLayout(context) {
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -38,8 +44,16 @@ class OverlayRootView(
         return super.dispatchTouchEvent(event)
     }
 
-    private val backCallback: Any? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) OnBackInvokedCallback { onBack() } else null
+    private val backCallback: Any? = when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> object : OnBackAnimationCallback {
+            override fun onBackStarted(backEvent: BackEvent) = onBackProgress(0f)
+            override fun onBackProgressed(backEvent: BackEvent) = onBackProgress(backEvent.progress)
+            override fun onBackCancelled() = onBackCancel()
+            override fun onBackInvoked() = onBack()
+        }
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> OnBackInvokedCallback { onBack() }
+        else -> null
+    }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()

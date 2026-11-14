@@ -11,6 +11,7 @@ import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 import android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 import android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 import android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -68,7 +70,26 @@ class OverlayWindow(
     private val owner = OverlayLifecycleOwner()
     private val voiceActions = AppVoiceActions(context, beforeOpeningScreen = { minimise() })
 
+    /** What was asked for: [expand] and [minimise] set it at once. */
     private var mode by mutableStateOf(OverlayMode.Panel)
+
+    /**
+     * What the window is laid out as. Trails [mode] while the panel plays out (it shrinks toward
+     * the bubble, then the window resizes) and leads it on the way back (resize, then play in).
+     */
+    private var windowMode by mutableStateOf(OverlayMode.Panel)
+
+    /** 0 = panel gone (shrunk toward the bubble), 1 = fully shown. Starts at 0 so it plays in. */
+    private val panelShown = Animatable(0f)
+
+    /** The bubble's own entrance after the panel has gone, 0 to 1. */
+    private val bubbleShown = Animatable(1f)
+
+    /** A back swipe in progress on the panel (Android 14+), 0 to 1; null when there is none. */
+    private var backSwipe by mutableStateOf<Float?>(null)
+
+    /** Close was tapped: play the panel out, then close. */
+    private var closing by mutableStateOf(false)
 
     /** The preset the panel currently matches, for highlighting; null after a custom resize. */
     private var panelPreset by mutableStateOf<PanelSize?>(null)
@@ -126,13 +147,16 @@ class OverlayWindow(
     private val root = OverlayRootView(
         context = context,
         onOutsideTouch = { setFocusable(false) },
-        onInsideTouch = { if (mode == OverlayMode.Panel) setFocusable(true) },
+        onInsideTouch = { if (windowMode == OverlayMode.Panel) setFocusable(true) },
         onBack = ::minimise,
+        onBackProgress = { backSwipe = it },
+        onBackCancel = { backSwipe = null },
     )
     private var attached = false
 
     /** Adds the window if needed and shows the panel. */
     fun show() {
+        closing = false
         if (!attached) {
             owner.start()
             root.setViewTreeLifecycleOwner(owner)
@@ -149,13 +173,13 @@ class OverlayWindow(
         session.ensureOpen()
         mode = OverlayMode.Panel
         focusable = true
-        update()
     }
 
     fun minimise() {
         session.flush()
         mode = OverlayMode.Bubble
-        update()
+        // Hand the keyboard back now, not after the panel has finished playing out.
+        setFocusable(false)
     }
 
     /** Screen size or orientation changed: pull both windows back on screen. */
@@ -185,11 +209,51 @@ class OverlayWindow(
         LaunchedEffect(recording) { update() }
         // The pill and the bubble record into the open note, so make sure there is one.
         LaunchedEffect(compact, mode) { if (compact || mode == OverlayMode.Bubble) session.ensureOpen() }
+        // Panel <-> bubble. Restarted by every change of mode, so a second tap mid-way turns the
+        // move around from wherever it is instead of queueing.
+        LaunchedEffect(mode) {
+            when (mode) {
+                OverlayMode.Bubble -> {
+                    panelShown.animateTo(0f, Motion.exit(Motion.Quick))
+                    windowMode = OverlayMode.Bubble
+                    backSwipe = null
+                    update()
+                    bubbleShown.snapTo(0f)
+                    bubbleShown.animateTo(1f, Motion.snappy())
+                }
+                OverlayMode.Panel -> {
+                    if (windowMode != OverlayMode.Panel) {
+                        windowMode = OverlayMode.Panel
+                        update()
+                    }
+                    panelShown.animateTo(1f, Motion.enter(Motion.Screen))
+                }
+            }
+        }
+        LaunchedEffect(closing) {
+            if (closing) {
+                panelShown.animateTo(0f, Motion.exit(Motion.Quick))
+                onClose()
+            }
+        }
+        // Follows the finger during a back swipe; eases back if the swipe is cancelled.
+        val swipe by animateFloatAsState(
+            targetValue = backSwipe ?: 0f,
+            animationSpec = if (backSwipe != null) snap() else Motion.move(),
+            label = "backSwipe",
+        )
         // Content alpha, not window alpha: see the class comment.
         val palette by paletteState.collectAsState()
         PerchTheme(palette, paper) {
-            when (mode) {
-                OverlayMode.Bubble -> OverlayBubble(
+            when (windowMode) {
+                OverlayMode.Bubble -> Box(
+                    Modifier.fillMaxSize().graphicsLayer {
+                        val shown = bubbleShown.value
+                        alpha = shown
+                        scaleX = BUBBLE_ENTER_SCALE + (1 - BUBBLE_ENTER_SCALE) * shown
+                        scaleY = scaleX
+                    },
+                ) { OverlayBubble(
                     voiceState = { voice.state },
                     opacity = opacity,
                     onRecord = { recordFromSmall(::expand) },
@@ -200,8 +264,17 @@ class OverlayWindow(
                     onDragStart = { dragOrigin = bubble },
                     onDrag = { dx, dy -> moveBubble(dx, dy) },
                     onDragEnd = { prefs.bubble = bubble },
-                )
-                OverlayMode.Panel -> Box(Modifier.fillMaxSize()) {
+                ) }
+                OverlayMode.Panel -> Box(
+                    Modifier.fillMaxSize().graphicsLayer {
+                        // Shrinks toward the bubble's spot and fades; a back swipe pulls it in a little.
+                        val shown = panelShown.value
+                        alpha = shown
+                        scaleX = (PANEL_ENTER_SCALE + (1 - PANEL_ENTER_SCALE) * shown) * (1 - BACK_SWIPE_SHRINK * swipe)
+                        scaleY = scaleX
+                        transformOrigin = bubbleOrigin()
+                    },
+                ) {
                     // Fully visible while you're using the panel; your opacity once you go back to
                     // the app underneath (the panel stays open). Dragging the slider previews it.
                     val inUse = LocalWindowInfo.current.isWindowFocused && !previewingOpacity
@@ -242,7 +315,7 @@ class OverlayWindow(
                             onMove = { dx, dy -> movePanel(dx, dy) },
                             onGeometryDone = { savePanel() },
                             onMinimise = ::minimise,
-                            onClose = onClose,
+                            onClose = { closing = true },
                         )
                     }
                     // Outside the if/else, so a resize carries on when the content switches
@@ -339,6 +412,12 @@ class OverlayWindow(
         update()
     }
 
+    /** Where the bubble sits, as a point within the panel, so the panel shrinks toward it. */
+    private fun bubbleOrigin(): TransformOrigin = TransformOrigin(
+        ((bubble.x + bubble.width / 2f - panel.x) / panel.width).coerceIn(0f, 1f),
+        ((bubble.y + bubble.height / 2f - panel.y) / panel.height).coerceIn(0f, 1f),
+    )
+
     private fun update() {
         compact = isCompact(panel)
         if (!attached) return
@@ -351,9 +430,9 @@ class OverlayWindow(
         // Room for the pause button too when the clip can pause (Whisper, not the device engine).
         val barWidth = dp(if (recording?.canPause == true) BAR_WITH_PAUSE_WIDTH_DP else PILL_RECORDING_WIDTH_DP)
         val rect = when {
-            mode == OverlayMode.Bubble && recording != null ->
+            windowMode == OverlayMode.Bubble && recording != null ->
                 bubble.grownTo(barWidth, dp(PILL_RECORDING_HEIGHT_DP), usableArea())
-            mode == OverlayMode.Bubble -> bubble
+            windowMode == OverlayMode.Bubble -> bubble
             compact && recording != null -> panel.grownTo(barWidth, dp(PILL_RECORDING_HEIGHT_DP), usableArea())
             else -> panel
         }
@@ -363,13 +442,13 @@ class OverlayWindow(
         params.height = rect.height
         // Only the panel needs to hear about outside touches (to hand focus back). For the bubble
         // it would wake the app on every touch anywhere on screen.
-        params.flags = if (mode == OverlayMode.Panel) {
+        params.flags = if (windowMode == OverlayMode.Panel) {
             params.flags or FLAG_WATCH_OUTSIDE_TOUCH
         } else {
             params.flags and FLAG_WATCH_OUTSIDE_TOUCH.inv()
         }
         // The pill has nothing to type into: leave the keyboard and Back with the app underneath.
-        val canFocus = mode == OverlayMode.Panel && focusable && !compact
+        val canFocus = windowMode == OverlayMode.Panel && focusable && !compact
         params.flags = if (canFocus) {
             params.flags and FLAG_NOT_FOCUSABLE.inv()
         } else {
@@ -442,6 +521,13 @@ class OverlayWindow(
         /** ✕, pause, a waveform and ✓. */
         const val BAR_WITH_PAUSE_WIDTH_DP = 176
         const val BUBBLE_WIDTH_DP = 56
+
+        /** The panel starts (and ends) at this scale as it grows out of, or into, the bubble. */
+        const val PANEL_ENTER_SCALE = 0.8f
+        const val BUBBLE_ENTER_SCALE = 0.6f
+
+        /** How much a full back swipe shrinks the panel before it lets go (Material: 10%). */
+        const val BACK_SWIPE_SHRINK = 0.1f
         const val BUBBLE_HEIGHT_DP = 30
     }
 }
