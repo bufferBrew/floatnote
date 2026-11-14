@@ -27,7 +27,7 @@ Solo developer, main-branch workflow.
 ## Tech stack
 - Kotlin · Jetpack Compose + Material 3
 - AGP 9.2.1 (built-in Kotlin) · Gradle 9.4.1 · Compose BOM 2026.06.00 — same as toddler-learn
-- Min SDK 26 (needed for TYPE_APPLICATION_OVERLAY) · Target/Compile SDK 37 · JVM 17 · single `:app` module
+- Min SDK 26 (needed for TYPE_APPLICATION_OVERLAY) · Target/Compile SDK 37 · JVM 17 · `:app` plus `:baselineprofile` (profile generator and startup benchmark)
 - Persistence: Room v5 (notes with `pinned` and `category`, blocks, dictation history with its kept
   recording's file name, vocabulary). Settings in
   SharedPreferences. Robolectric tests (`data/db/DatabaseTest`) run every migration.
@@ -46,6 +46,8 @@ Solo developer, main-branch workflow.
 | Install     | `./gradlew installDebug`   |
 | Lint        | `./gradlew lint`           |
 | Release APK | `./gradlew assembleRelease` (unsigned without the signing properties) |
+| Baseline Profile | `./gradlew :app:generateBaselineProfile` (device or emulator, API 28+); writes `app/src/release/generated/baselineProfiles/`. Regenerate after big UI changes |
+| Startup benchmark | `./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest` (cold start, with and without the profile; quote numbers from a real phone only) |
 | CI          | `.github/workflows/ci.yml`: unit tests, lint, release build |
 | APK to Drive | Automatic: `.githooks/post-commit` builds the debug APK after each commit and copies it to `My Drive/apk/Perch-debug.apk` (log: `build/apk-to-drive.log`). Enable on a new clone with `git config core.hooksPath .githooks` |
 
@@ -62,6 +64,12 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - `ui/editor/NoteViewModel.kt`: the session (note list + open note). Holds the open note as Compose snapshot state (not a Flow, so
   text fields don't lose the cursor), with a debounced save plus `flush()` on stop/clear.
 - `ui/editor/NoteEditorContent.kt`: the stateless editor, driven through `NoteEditorActions`.
+- `ui/theme/Motion.kt`: every duration, easing and spring (`fade`, `enter`, `exit`, `move`, `snappy`).
+  Compose scales them by the system animator setting in both hosts; never time UI with `delay()`.
+- `ui/components/Screens.kt`: `ScreenSwitcher`, the one screen-change transition (shared-axis slide
+  and fade) used by the full app, its Settings pages and the floating panel. In the full app it is
+  seekable and follows predictive back (`backTo`); screens are keyed by small sealed types
+  (`AppScreen`, `PanelScreen`), and `rememberLast` keeps a closing editor drawn while it slides out.
 - `ui/list/NoteListContent.kt`: the stateless note list (long-press to delete, with a confirm).
   The app opens on the list. A note left blank is deleted on close instead of saved.
 
@@ -70,6 +78,11 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
     and while recording the time plus Pause / Resume / Stop and add (reposted only when the phase changes).
   - `OverlayWindow`: one WindowManager window that is either the panel or the bubble; handles
     focus hand-off, opacity (content alpha, never window alpha), move/resize, and saves geometry via `OverlayPrefs`.
+    It keeps two modes: `mode` (asked for) and `windowMode` (laid out). Minimise shrinks the panel
+    toward the bubble (`panelShown`, a graphics layer), then resizes the window and springs the bubble
+    in; expand resizes first and grows the panel out. `LaunchedEffect(mode)` restarts on each request,
+    so a move reverses from where it is. Close plays the panel out before closing. On Android 14+
+    `OverlayRootView`'s `OnBackAnimationCallback` shrinks the panel with the back swipe.
   - `OverlayUi.kt`: `OverlayBubble`, `OverlayPanel` and `OverlayRecordPill`. The panel hosts the same
     `NoteListContent` / `NoteEditorContent` as the full app. The corner resizes freely down to one
     button; below 180×160 dp the panel becomes the record pill (tap records, ✕/✓ while recording,
@@ -160,7 +173,9 @@ Run `./gradlew testDebugUnitTest` and `assembleDebug` before calling a change do
 - Overlay window: drop `FLAG_NOT_FOCUSABLE` while a text field is focused so the
   keyboard (incl. Wispr Flow) works, and restore it when minimised so touches pass through.
   Opacity is a graphics layer on the content (see the gotcha below), never `LayoutParams.alpha`.
-- Use theme tokens. No hardcoded colors or dp literals for corners and elevation.
+- Use theme tokens. No hardcoded colors or dp literals for corners and elevation, and no literal
+  durations or easings: use `Motion`. Animate with `graphicsLayer` (scale, alpha, translation),
+  never window size per frame and never `LayoutParams.alpha`.
 - Visual style: palette taken from the app icon (deep indigo tile, violet accent, lavender-white
   paper), set in `ui/theme/Theme.kt`. Serif titles, pill chips (`ui/components/Buttons.kt`) with a
   keyboard focus ring, large rounded cards.
